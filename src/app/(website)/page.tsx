@@ -22,7 +22,11 @@ export default function Home() {
         'Automate comment replies to enhance audience interaction',
         'Turn followers into customers with targeted messaging',
       ],
-      cta: 'Get Started',
+      cta: (
+        <Link href="/dashboard" style={{ textDecoration: 'none', color: 'blue' }}>
+          Get Started
+        </Link>
+      ),
     },
     {
       name: 'Smart AI Plan',
@@ -35,9 +39,15 @@ export default function Home() {
         'Priority customer support',
         'Custom branding options',
       ],
-      cta: 'Upgrade Now',
+      cta: (
+        <Link href="/dashboard" style={{ textDecoration: 'none', color: 'blue' }}>
+          Upgrade Now
+        </Link>
+      ),
     },
-  ]
+  ];
+  
+    
   return (
     <main>
       <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg">
@@ -46,30 +56,39 @@ export default function Home() {
           <div className="container px-4 py-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center font-bold">
-                  li
-                </div>
-                <span className="text-xl font-semibold text-primary-foreground">
-                  Slide
-                </span>
+               
+                <div className="flex items-center gap-2">
+      <Image 
+        src="/logo1.png"
+        alt="Company Logo"
+        width={140}  // Adjust these dimensions based on your logo size
+        height={60}
+        className="object-contain"
+      />
+    </div>
               </div>
               <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
-                <Link href="#features">Features</Link>
-                <Link href="#pricing">Pricing</Link>
-                <Link href="#about">About</Link>
+              <Link href="/">Home</Link>
+              <Link href="/features">Features</Link>
+              <Link href="/pricing">Pricing</Link>
+              <Link href="/about">About</Link>
               </nav>
-              <Button className="bg-white text-primary">
+              
+              <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-blue-400 hover:bg-blue-900/50">
                 <Link href="/dashboard">Login</Link>
-              </Button>
+                </Button>
             </div>
 
             <div className="mx-auto mt-16 max-w-3xl text-center">
               <h1 className="text-4xl font-bold leading-tight tracking-tighter text-white sm:text-5xl md:text-6xl lg:text-7xl">
-                Transform Your Instagram Engagement with Slide
+                Transform Your Instagram Engagement with Blacck AI
               </h1>
 
               <p className="mt-6 text-lg text-blue-200">
-                Slide revolutionizes how you connect with your audience on
+                Blacck AI revolutionizes how you connect with your audience on
                 Instagram. Automate responses and boost engagement effortlessly,
                 turning interactions into valuable business opportunities.
               </p>
@@ -77,22 +96,23 @@ export default function Home() {
               <div className="mt-8 flex justify-center gap-4">
                 <Button
                   size="lg"
-                  className="bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  Get Started
-                </Button>
+                  className="bg-blue-600 text-white hover:bg-blue-700">
+                <Link href="/dashboard">Get Started</Link>
+                </Button> 
+
                 <Button
                   size="lg"
-                  variant="outline"
-                  className="border-blue-400  hover:bg-blue-900/50"
-                >
-                  Learn More
+                  className="bg-blue-600 text-white hover:bg-blue-700">
+                <Link href="/privacy">Privacy Policy</Link>
                 </Button>
+
+               
+
               </div>
             </div>
-            <div className="relative h-40 md:h-80 w-full  mt-10">
+            <div className="relative h-40 md:h-80 w-full mt-10">
               <Image
-                src="/Ig-creators.png"
+                src="/homea.png"
                 alt="Community member"
                 fill
                 className="object-cover"
@@ -142,9 +162,9 @@ export default function Home() {
                     ))}
                   </ul>
                 </CardContent>
-                <CardFooter>
-                  <Button className="w-full">{plan.cta}</Button>
-                </CardFooter>
+                <Link href="/dashboard"><Button className="w-full">{plan.cta}
+                </Button>
+                </Link>
               </Card>
             ))}
           </div>

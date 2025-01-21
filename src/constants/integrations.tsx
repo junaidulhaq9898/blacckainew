@@ -11,15 +11,14 @@ export const INTEGRATION_CARDS: Props[] = [
   {
     title: 'Connect Instagram',
     description:
-      'Lorem ipsum dolor sit amet consectetur. Mauris scelerisque tincidunt ultrices',
+      'Integrate your Instagram account to automate replies for direct messages and comments, saving you time and effort.',
     icon: <InstagramDuoToneBlue />,
     strategy: 'INSTAGRAM',
-    
   },
   {
     title: 'Connect Salesforce',
     description:
-      'Lorem ipsum dolor sit amet consectetur. Mauris scelerisque tincidunt ultrices',
+      'Seamlessly sync your Salesforce CRM to manage leads and customer interactions more effectively.',
     icon: <SalesForceDuoToneBlue />,
     strategy: 'CRM',
   },
