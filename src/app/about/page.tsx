@@ -12,32 +12,32 @@ const AboutPage: React.FC = () => {
       <div className="relative">
         {/* Header Section */}
         <div className="container px-4 py-8">
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <Image 
-        src="/logo1.png"
-        alt="Company Logo"
-        width={140}  // Adjust these dimensions based on your logo size
-        height={60}
-        className="object-contain"
-      />
-    </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Image 
+                src="/logo1.png"
+                alt="Company Logo"
+                width={140}  // Adjust these dimensions based on your logo size
+                height={60}
+                className="object-contain"
+              />
+            </div>
 
-    <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
-      <Link href="/">Home</Link>
-      <Link href="/features">Features</Link>
-      <Link href="/pricing">Pricing</Link>
-      <Link href="/about">About</Link>
-    </nav>
+            <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
+              <Link href="/">Home</Link>
+              <Link href="/features">Features</Link>
+              <Link href="/pricing">Pricing</Link>
+              <Link href="/about">About</Link>
+            </nav>
 
-    <Button
-      size="lg"
-      variant="outline"
-      className="border-blue-400 hover:bg-blue-900/50"
-    >
-      <Link href="/dashboard">Login</Link>
-    </Button>
-  </div>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-blue-400 hover:bg-blue-900/50"
+            >
+              <Link href="/dashboard">Login</Link>
+            </Button>
+          </div>
 
           {/* Hero Section */}
           <div className="mx-auto mt-16 max-w-3xl text-center">
@@ -62,7 +62,7 @@ const AboutPage: React.FC = () => {
             <div className="bg-white/5 p-8 rounded-2xl border border-gray-800 hover:border-blue-500 transition-all duration-300">
               <h2 className="text-2xl font-bold text-white mb-4">Our Legacy: Rooted in Innovation</h2>
               <p className="text-blue-200 leading-relaxed">
-                Blacck AI draws its inspiration and expertise from its parent company, Klovv Intelligence. Founded by Stella Carter, a visionary AI engineer and former OpenAI pioneer, Klovv Intelligence has become synonymous with excellence in artificial intelligence. Stella's leadership has not only shaped Klovv Intelligence but also laid the foundation for Blacck AI's commitment to innovation and quality.
+                Blacck AI draws its inspiration and expertise from its parent company, Klovv Intelligence. Founded by Stella Carter, a visionary AI engineer and former OpenAI pioneer, Klovv Intelligence has become synonymous with excellence in artificial intelligence. Stella&apos;s leadership has not only shaped Klovv Intelligence but also laid the foundation for Blacck AI&apos;s commitment to innovation and quality.
               </p>
             </div>
             <div className="bg-white/5 p-8 rounded-2xl border border-gray-800 hover:border-blue-500 transition-all duration-300">
@@ -90,7 +90,7 @@ const AboutPage: React.FC = () => {
                 },
                 {
                   title: "Innovation at the Core",
-                  description: "With a foundation rooted in Klovv Intelligence's ethos, we are constantly pushing boundaries to stay ahead of the curve."
+                  description: "With a foundation rooted in Klovv Intelligence&apos;s ethos, we are constantly pushing boundaries to stay ahead of the curve."
                 }
               ].map((item, index) => (
                 <div key={index} className="bg-white/5 p-6 rounded-xl border border-gray-800 hover:border-purple-500 transition-all duration-300">
@@ -105,21 +105,19 @@ const AboutPage: React.FC = () => {
           <div className="text-center max-w-3xl mx-auto">
             <h2 className="text-3xl font-bold text-white mb-6">Join Us in Shaping the Future</h2>
             <p className="text-lg text-blue-200 mb-8">
-              Blacck AI is more than just a company; it's a movement towards a smarter, more efficient future. Whether you're looking to optimize your business operations or explore the possibilities of AI, we're here to help you every step of the way.
+              Blacck AI is more than just a company; it&apos;s a movement towards a smarter, more efficient future. Whether you&apos;re looking to optimize your business operations or explore the possibilities of AI, we&apos;re here to help you every step of the way.
             </p>
             <p className="text-lg text-blue-200 font-semibold">
-              Together with Klovv Intelligence, we're shaping the future of AI—one innovation at a time.
+              Together with Klovv Intelligence, we&apos;re shaping the future of AI—one innovation at a time.
             </p>
             <Link href="/dashboard">
-
-            <Button
-              size="lg"
-              className="mt-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105"
-            >
-              Get Started
-            </Button>
+              <Button
+                size="lg"
+                className="mt-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105"
+              >
+                Get Started
+              </Button>
             </Link>
-
           </div>
         </div>
       </div>

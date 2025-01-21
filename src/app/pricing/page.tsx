@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button'; // Ensure this path matches your project structure
 import Image from 'next/image'; // Add this import at the top
 
-
 const PricingPage: React.FC = () => {
   return (
     <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg">
@@ -11,34 +10,33 @@ const PricingPage: React.FC = () => {
 
       <div className="relative">
         {/* Header Section */}
-        {/* Header Section */}
         <div className="container px-4 py-8">
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <Image 
-        src="/logo1.png"
-        alt="Company Logo"
-        width={140}  // Adjust these dimensions based on your logo size
-        height={60}
-        className="object-contain"
-      />
-    </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Image 
+                src="/logo1.png"
+                alt="Company Logo"
+                width={140}  // Adjust these dimensions based on your logo size
+                height={60}
+                className="object-contain"
+              />
+            </div>
 
-    <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
-      <Link href="/">Home</Link>
-      <Link href="/features">Features</Link>
-      <Link href="/pricing">Pricing</Link>
-      <Link href="/about">About</Link>
-    </nav>
+            <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
+              <Link href="/">Home</Link>
+              <Link href="/features">Features</Link>
+              <Link href="/pricing">Pricing</Link>
+              <Link href="/about">About</Link>
+            </nav>
 
-    <Button
-      size="lg"
-      variant="outline"
-      className="border-blue-400 hover:bg-blue-900/50"
-    >
-      <Link href="/dashboard">Login</Link>
-    </Button>
-  </div>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-blue-400 hover:bg-blue-900/50"
+            >
+              <Link href="/dashboard">Login</Link>
+            </Button>
+          </div>
         </div>
 
         {/* Hero Section */}
@@ -47,30 +45,29 @@ const PricingPage: React.FC = () => {
             Pricing Plans That Fit Your Needs
           </h1>
           <p className="mt-6 text-lg text-blue-200">
-            Choose the perfect plan to elevate your growth and engagement. Whether you're just starting or scaling, we have the right tools for you.
+            Choose the perfect plan to elevate your growth and engagement. Whether you&apos;re just starting or scaling, we have the right tools for you.
           </p>
         </div>
       </div>
 
-    {/* Why Choose Us */}
-<div className="container mx-auto px-4 py-16">
-  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-    {[
-      { title: 'Simple and Transparent Pricing', description: 'No hidden fees, no surprises.' },
-      { title: 'Scalable Solutions', description: 'Plans designed to grow with your needs.' },
-      { title: 'World-Class Support', description: 'Access our dedicated support team anytime.' },
-    ].map((item, index) => (
-      <div
-        key={index}
-        className="bg-black/40 p-6 rounded-xl border border-gray-700 hover:border-blue-500 transition-all duration-300 flex flex-col items-center justify-center text-center"
-      >
-        <h3 className="text-xl font-semibold mb-4 text-white">{item.title}</h3>
-        <p className="text-gray-400 font-bold">{item.description}</p>
+      {/* Why Choose Us */}
+      <div className="container mx-auto px-4 py-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+          {[
+            { title: 'Simple and Transparent Pricing', description: 'No hidden fees, no surprises.' },
+            { title: 'Scalable Solutions', description: 'Plans designed to grow with your needs.' },
+            { title: 'World-Class Support', description: 'Access our dedicated support team anytime.' },
+          ].map((item, index) => (
+            <div
+              key={index}
+              className="bg-black/40 p-6 rounded-xl border border-gray-700 hover:border-blue-500 transition-all duration-300 flex flex-col items-center justify-center text-center"
+            >
+              <h3 className="text-xl font-semibold mb-4 text-white">{item.title}</h3>
+              <p className="text-gray-400 font-bold">{item.description}</p>
+            </div>
+          ))}
+        </div>
       </div>
-    ))}
-  </div>
-</div>
-
 
       {/* Pricing Plans */}
       <div className="container mx-auto px-4">
@@ -165,7 +162,7 @@ const PricingPage: React.FC = () => {
             },
             {
               question: 'Is there a free trial for the Smart AI Plan?',
-              answer: "Currently, we don't offer a trial, but our Free Plan provides a great way to explore the basic features.",
+              answer: "Currently, we don&apos;t offer a trial, but our Free Plan provides a great way to explore the basic features.",
             },
             {
               question: 'How secure is my payment and data?',
@@ -184,18 +181,17 @@ const PricingPage: React.FC = () => {
       </div>
 
       {/* Call-to-Action Section */}
-<div className="text-center mt-20 mb-20"> {/* Added mb-20 for spacing */}
-  <h2 className="text-3xl font-bold mb-6">Ready to Elevate Your Growth?</h2>
-  <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">
-    Whether you're just starting or looking to scale, we have the perfect plan for you. Join thousands of happy customers today!
-  </p>
-  <Link href="/dashboard">
-    <button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105">
-      Get Started Now
-    </button>
-  </Link>
-</div>
-
+      <div className="text-center mt-20 mb-20"> {/* Added mb-20 for spacing */}
+        <h2 className="text-3xl font-bold mb-6">Ready to Elevate Your Growth?</h2>
+        <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">
+          Whether you&apos;re just starting or looking to scale, we have the perfect plan for you. Join thousands of happy customers today!
+        </p>
+        <Link href="/dashboard">
+          <button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105">
+            Get Started Now
+          </button>
+        </Link>
+      </div>
     </section>
   );
 };
