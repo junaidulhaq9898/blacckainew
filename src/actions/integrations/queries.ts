@@ -16,10 +16,10 @@ export const updateIntegration = async (
   })
 }
 
-export const getIntegration = async (clerkId: string) => {
+export const getIntegration = async (userId: string) => {
   return await client.user.findUnique({
     where: {
-      clerkId,
+      id: userId, // Ensure we're fetching based on userId
     },
     select: {
       integrations: {
@@ -32,14 +32,14 @@ export const getIntegration = async (clerkId: string) => {
 }
 
 export const createIntegration = async (
-  clerkId: string,
+  userId: string,
   token: string,
   expire: Date,
   igId?: string
 ) => {
   return await client.user.update({
     where: {
-      clerkId,
+      id: userId, // Ensure we're using userId here
     },
     data: {
       integrations: {
