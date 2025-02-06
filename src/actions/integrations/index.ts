@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { onCurrentUser } from '../user'
-import { createIntegration, getIntegration } from './queries'
+import { createIntegration, getIntegration, updateIntegration } from '../integrations/queries' // Adjust the path if needed
 import { generateTokens } from '@/lib/fetch'
 import axios from 'axios'
 
