@@ -1,6 +1,6 @@
-import { client } from '@/lib/prisma'
+import { client } from '@/lib/prisma';
 
-// Update the Instagram integration
+// Update integration
 export const updateIntegration = async (
   token: string,
   expire: Date,
@@ -12,26 +12,22 @@ export const updateIntegration = async (
       token,
       expiresAt: expire,
     },
-  })
-}
+  });
+};
 
-// Get existing Instagram integration for a user
+// Get user's integrations
 export const getIntegration = async (userId: string) => {
   return await client.user.findUnique({
-    where: {
-      id: userId, // Ensure we're fetching based on userId
-    },
+    where: { id: userId },
     select: {
       integrations: {
-        where: {
-          name: 'INSTAGRAM',
-        },
+        where: { name: 'INSTAGRAM' },
       },
     },
-  })
-}
+  });
+};
 
-// Create a new Instagram integration for the user
+// Create integration (FIXED)
 export const createIntegration = async (
   userId: string,
   token: string,
@@ -39,21 +35,20 @@ export const createIntegration = async (
   igId?: string
 ) => {
   return await client.user.update({
-    where: {
-      id: userId, // Ensure we're using userId here
-    },
+    where: { id: userId },
     data: {
       integrations: {
         create: {
           token,
           expiresAt: expire,
           instagramId: igId,
+          name: 'INSTAGRAM', // Explicitly set integration name
         },
       },
     },
     select: {
-      firstname: true,
-      lastname: true,
+      id: true, // Only return non-unique fields
+      integrations: true,
     },
-  })
-}
+  });
+};
