@@ -2,6 +2,7 @@
 
 import { client } from '@/lib/prisma'
 
+// Update the Instagram integration
 export const updateIntegration = async (
   token: string,
   expire: Date,
@@ -16,6 +17,7 @@ export const updateIntegration = async (
   })
 }
 
+// Get existing Instagram integration for a user
 export const getIntegration = async (userId: string) => {
   return await client.user.findUnique({
     where: {
@@ -31,6 +33,7 @@ export const getIntegration = async (userId: string) => {
   })
 }
 
+// Create a new Instagram integration for the user
 export const createIntegration = async (
   userId: string,
   token: string,

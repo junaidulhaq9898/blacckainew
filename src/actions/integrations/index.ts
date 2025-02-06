@@ -6,6 +6,7 @@ import { createIntegration, getIntegration } from './queries'
 import { generateTokens } from '@/lib/fetch'
 import axios from 'axios'
 
+// Initiates Instagram OAuth flow.
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy === 'INSTAGRAM') {
     // Redirect to Instagram OAuth URL
@@ -13,6 +14,7 @@ export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   }
 }
 
+// Handles the callback after Instagram OAuth authorization.
 export const onIntegrate = async (code: string) => {
   const user = await onCurrentUser()
 
@@ -44,7 +46,7 @@ export const onIntegrate = async (code: string) => {
 
       // Set token expiry date
       const expire_date = new Date()
-      expire_date.setDate(expire_date.getDate() + 60) // Token expiry date
+      expire_date.setDate(expire_date.getDate() + 60) // Token expiry date (60 days)
 
       // Store the integration in the database
       const create = await createIntegration(
