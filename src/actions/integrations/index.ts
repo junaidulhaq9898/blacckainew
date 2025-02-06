@@ -1,63 +1,75 @@
+'use server'
+
 import { redirect } from 'next/navigation'
-import { onCurrentUser as importedOnCurrentUser } from '../user' // Renamed import
-import { createIntegration, getIntegration, updateIntegration } from '../integrations/queries'
+import { onCurrentUser } from '../user'
+import { createIntegration, getIntegration } from './queries'
 import { generateTokens } from '@/lib/fetch'
 import axios from 'axios'
 
-// OAuth initiation
+// Initiates Instagram OAuth flow.
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy === 'INSTAGRAM') {
+    // Redirect to Instagram OAuth URL
     return redirect(process.env.INSTAGRAM_EMBEDDED_OAUTH_URL as string)
   }
 }
 
-// Integration handler
+// Handles the callback after Instagram OAuth authorization.
 export const onIntegrate = async (code: string) => {
-  const user = await importedOnCurrentUser() // Use renamed import
+  const user = await onCurrentUser()
 
-  if (!user?.id) {
-    console.error('User not found')
-    return { status: 400, message: 'User not found' }
+  // Ensure we have a valid user object
+  if (!user || !user.id) {
+    console.error('User not found or missing user ID')
+    return { status: 400, message: 'User not found or missing user ID' }
   }
 
   try {
+    // Get the user's integrations
     const integration = await getIntegration(user.id)
 
-    // Fixed undefined check
-    if (integration?.integrations && integration.integrations.length > 0) {
-      console.log('Existing integration found')
-      return { status: 200, message: 'Integration exists' }
+    if (integration && integration.integrations.length > 0) {
+      console.log('Instagram integration already exists.')
+      return { status: 200, message: 'Integration already exists' }
     }
 
+    // Generate token using the authorization code
     const token = await generateTokens(code)
-    if (!token) {
+    console.log('Generated Token:', token)
+
+    if (token) {
+      // Fetch Instagram user ID
+      const insta_id = await axios.get(
+        `${process.env.INSTAGRAM_BASE_URL}/me?fields=id&access_token=${token.access_token}`
+      )
+      console.log('Instagram User ID:', insta_id.data.id)
+
+      // Set token expiry date
+      const expire_date = new Date()
+      expire_date.setDate(expire_date.getDate() + 60) // Token expiry date (60 days)
+
+      // Store the integration in the database
+      const create = await createIntegration(
+        user.id, // Using user.id instead of clerkId
+        token.access_token,
+        expire_date,
+        insta_id.data.id
+      )
+      console.log('Integration successfully stored in the database:', create)
+
+      // Redirect after successful integration
+      return { status: 200, data: create }
+    } else {
+      console.error('Token generation failed')
       return { status: 401, message: 'Token generation failed' }
     }
-
-    const insta_id = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/me?fields=id&access_token=${token.access_token}`
-    )
-
-    const expire_date = new Date()
-    expire_date.setDate(expire_date.getDate() + 60)
-
-    const create = await createIntegration(
-      user.id,
-      token.access_token,
-      expire_date,
-      insta_id.data.id
-    )
-
-    return { status: 200, data: create }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error('Integration error:', message)
-    return { status: 500, message }
+    if (error instanceof Error) {
+      console.error('Error during integration:', error.message)
+      return { status: 500, message: error.message }
+    } else {
+      console.error('Unknown error during integration')
+      return { status: 500, message: 'Unknown error' }
+    }
   }
-}
-
-// UUID validation (keep this at bottom)
-const isValidUuid = (id: string) => {
-  const regex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-  return regex.test(id)
 }
