@@ -1,21 +1,4 @@
-'use server'
-
 import { client } from '@/lib/prisma'
-
-// Update the Instagram integration
-export const updateIntegration = async (
-  token: string,
-  expire: Date,
-  id: string
-) => {
-  return await client.integrations.update({
-    where: { id },
-    data: {
-      token,
-      expiresAt: expire,
-    },
-  })
-}
 
 // Get existing Instagram integration for a user
 export const getIntegration = async (userId: string) => {

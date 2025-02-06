@@ -1,5 +1,3 @@
-'use server'
-
 import { redirect } from 'next/navigation'
 import { onCurrentUser } from '../user'
 import { createIntegration, getIntegration } from './queries'
@@ -22,6 +20,12 @@ export const onIntegrate = async (code: string) => {
   if (!user || !user.id) {
     console.error('User not found or missing user ID')
     return { status: 400, message: 'User not found or missing user ID' }
+  }
+
+  // Validate UUID format of user.id
+  if (!isValidUuid(user.id)) {
+    console.error('Invalid user ID format')
+    return { status: 400, message: 'Invalid user ID format' }
   }
 
   try {
@@ -72,4 +76,10 @@ export const onIntegrate = async (code: string) => {
       return { status: 500, message: 'Unknown error' }
     }
   }
+}
+
+// Helper function to validate UUID
+const isValidUuid = (id: string) => {
+  const regex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  return regex.test(id);
 }
