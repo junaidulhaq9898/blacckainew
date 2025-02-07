@@ -14,19 +14,20 @@ const isValidUUID = (str: string) => {
 // Initiates Instagram OAuth flow.
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy === 'INSTAGRAM') {
-    // Redirect to Instagram OAuth URL
+    // Log the redirect URL for debugging
+    console.log("Redirecting to Instagram OAuth URL:", process.env.INSTAGRAM_EMBEDDED_OAUTH_URL);
     return redirect(process.env.INSTAGRAM_EMBEDDED_OAUTH_URL as string)
   }
 }
 
 // Handles the callback after Instagram OAuth authorization.
 export const onIntegrate = async (code: string) => {
+  console.log("onIntegrate triggered with code:", code); // Log the received code
   const user = await onCurrentUser()
 
-  // Log the user.id before Prisma query to check if it's a valid UUID
-  console.log("User ID before Prisma query:", user.id);
+  console.log("User ID fetched:", user.id); // Log the fetched user ID
 
-  // Ensure we have a valid user object and a valid UUID for user.id
+  // Log the user.id before Prisma query to check if it's a valid UUID
   if (!user || !user.id || !isValidUUID(user.id)) {
     console.error('Invalid UUID for user.id:', user?.id);
     return { status: 400, message: 'User not found or invalid user ID' };
@@ -35,6 +36,7 @@ export const onIntegrate = async (code: string) => {
   try {
     // Get the user's integrations
     const integration = await getIntegration(user.id)
+    console.log('Integration fetched:', integration); // Log the integration data
 
     if (integration && integration.integrations.length > 0) {
       console.log('Instagram integration already exists.');
@@ -43,14 +45,14 @@ export const onIntegrate = async (code: string) => {
 
     // Generate token using the authorization code
     const token = await generateTokens(code);
-    console.log('Generated Token:', token);
+    console.log('Generated Token:', token); // Log the generated token
 
     if (token) {
       // Fetch Instagram user ID
       const insta_id = await axios.get(
         `${process.env.INSTAGRAM_BASE_URL}/me?fields=id&access_token=${token.access_token}`
       );
-      console.log("Instagram User ID from Instagram API:", insta_id.data.id);
+      console.log("Instagram User ID from Instagram API:", insta_id.data.id); // Log Instagram ID
 
       // Ensure the Instagram ID is valid
       if (!insta_id.data.id) {
