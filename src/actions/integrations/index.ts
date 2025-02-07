@@ -1,10 +1,15 @@
-'use server'
-
+import { client } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { onCurrentUser } from '../user'
 import { createIntegration, getIntegration } from './queries'
 import { generateTokens } from '@/lib/fetch'
 import axios from 'axios'
+
+// Regular expression to check if a string is a valid UUID
+const isValidUUID = (str: string) => {
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  return uuidRegex.test(str);
+}
 
 // Initiates Instagram OAuth flow.
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
@@ -19,9 +24,9 @@ export const onIntegrate = async (code: string) => {
   const user = await onCurrentUser()
 
   // Ensure we have a valid user object
-  if (!user || !user.id) {
-    console.error('User not found or missing user ID')
-    return { status: 400, message: 'User not found or missing user ID' }
+  if (!user || !user.id || !isValidUUID(user.id)) {
+    console.error('User not found or invalid user ID')
+    return { status: 400, message: 'User not found or invalid user ID' }
   }
 
   try {
@@ -43,6 +48,12 @@ export const onIntegrate = async (code: string) => {
         `${process.env.INSTAGRAM_BASE_URL}/me?fields=id&access_token=${token.access_token}`
       )
       console.log('Instagram User ID:', insta_id.data.id)
+
+      // Ensure the Instagram ID is valid
+      if (!insta_id.data.id) {
+        console.error('Invalid Instagram ID')
+        return { status: 400, message: 'Invalid Instagram ID' }
+      }
 
       // Set token expiry date
       const expire_date = new Date()
