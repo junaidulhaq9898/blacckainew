@@ -12,8 +12,11 @@ export const updateIntegration = async (
   expire: Date,
   id: string
 ) => {
+  // Log the id before using it in Prisma query
+  console.log("Integration update - User ID:", id);
+
   if (!isValidUUID(id)) {
-    throw new Error('Invalid UUID for integration update')
+    throw new Error('Invalid UUID for integration update');
   }
 
   return await client.integrations.update({
@@ -27,8 +30,11 @@ export const updateIntegration = async (
 
 // Get existing Instagram integration for a user
 export const getIntegration = async (userId: string) => {
+  // Log the userId before using it in Prisma query
+  console.log("Get Integration - User ID:", userId);
+
   if (!isValidUUID(userId)) {
-    throw new Error('Invalid UUID for user ID')
+    throw new Error('Invalid UUID for user ID');
   }
 
   return await client.user.findUnique({
@@ -52,8 +58,11 @@ export const createIntegration = async (
   expire: Date,
   igId?: string
 ) => {
+  // Log the userId before using it in Prisma query
+  console.log("Create Integration - User ID:", userId);
+
   if (!isValidUUID(userId)) {
-    throw new Error('Invalid UUID for user ID')
+    throw new Error('Invalid UUID for user ID');
   }
 
   return await client.user.update({

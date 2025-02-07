@@ -23,10 +23,13 @@ export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
 export const onIntegrate = async (code: string) => {
   const user = await onCurrentUser()
 
-  // Ensure we have a valid user object
+  // Log the user.id before Prisma query to check if it's a valid UUID
+  console.log("User ID before Prisma query:", user.id);
+
+  // Ensure we have a valid user object and a valid UUID for user.id
   if (!user || !user.id || !isValidUUID(user.id)) {
-    console.error('User not found or invalid user ID')
-    return { status: 400, message: 'User not found or invalid user ID' }
+    console.error('Invalid UUID for user.id:', user?.id);
+    return { status: 400, message: 'User not found or invalid user ID' };
   }
 
   try {
@@ -34,30 +37,30 @@ export const onIntegrate = async (code: string) => {
     const integration = await getIntegration(user.id)
 
     if (integration && integration.integrations.length > 0) {
-      console.log('Instagram integration already exists.')
-      return { status: 200, message: 'Integration already exists' }
+      console.log('Instagram integration already exists.');
+      return { status: 200, message: 'Integration already exists' };
     }
 
     // Generate token using the authorization code
-    const token = await generateTokens(code)
-    console.log('Generated Token:', token)
+    const token = await generateTokens(code);
+    console.log('Generated Token:', token);
 
     if (token) {
       // Fetch Instagram user ID
       const insta_id = await axios.get(
         `${process.env.INSTAGRAM_BASE_URL}/me?fields=id&access_token=${token.access_token}`
-      )
-      console.log('Instagram User ID:', insta_id.data.id)
+      );
+      console.log("Instagram User ID from Instagram API:", insta_id.data.id);
 
       // Ensure the Instagram ID is valid
       if (!insta_id.data.id) {
-        console.error('Invalid Instagram ID')
-        return { status: 400, message: 'Invalid Instagram ID' }
+        console.error('Invalid Instagram ID');
+        return { status: 400, message: 'Invalid Instagram ID' };
       }
 
       // Set token expiry date
-      const expire_date = new Date()
-      expire_date.setDate(expire_date.getDate() + 60) // Token expiry date (60 days)
+      const expire_date = new Date();
+      expire_date.setDate(expire_date.getDate() + 60); // Token expiry date (60 days)
 
       // Store the integration in the database
       const create = await createIntegration(
@@ -65,22 +68,22 @@ export const onIntegrate = async (code: string) => {
         token.access_token,
         expire_date,
         insta_id.data.id
-      )
-      console.log('Integration successfully stored in the database:', create)
+      );
+      console.log('Integration successfully stored in the database:', create);
 
       // Redirect after successful integration
-      return { status: 200, data: create }
+      return { status: 200, data: create };
     } else {
-      console.error('Token generation failed')
-      return { status: 401, message: 'Token generation failed' }
+      console.error('Token generation failed');
+      return { status: 401, message: 'Token generation failed' };
     }
   } catch (error: unknown) {
     if (error instanceof Error) {
-      console.error('Error during integration:', error.message)
-      return { status: 500, message: error.message }
+      console.error('Error during integration:', error.message);
+      return { status: 500, message: error.message };
     } else {
-      console.error('Unknown error during integration')
-      return { status: 500, message: 'Unknown error' }
+      console.error('Unknown error during integration');
+      return { status: 500, message: 'Unknown error' };
     }
   }
 }
