@@ -1,86 +1,64 @@
 import { client } from '@/lib/prisma'
+import { INTEGRATIONS } from '@prisma/client'
 
-// Regular expression to check if a string is a valid UUID
 const isValidUUID = (str: string) => {
-  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-  return uuidRegex.test(str);
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+  return uuidRegex.test(str)
 }
 
-// Update the Instagram integration
 export const updateIntegration = async (
   token: string,
   expire: Date,
   id: string
 ) => {
-  // Log the id before using it in Prisma query
-  console.log("Integration update - User ID:", id);
+  if (!isValidUUID(id)) throw new Error('Invalid UUID for integration update')
 
-  if (!isValidUUID(id)) {
-    throw new Error('Invalid UUID for integration update');
-  }
-
-  return await client.integrations.update({
+  return client.integrations.update({
     where: { id },
-    data: {
-      token,
-      expiresAt: expire,
-    },
+    data: { token, expiresAt: expire }
   })
 }
 
-// Get existing Instagram integration for a user
 export const getIntegration = async (userId: string) => {
-  // Log the userId before using it in Prisma query
-  console.log("Get Integration - User ID:", userId);
+  if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
-  if (!isValidUUID(userId)) {
-    throw new Error('Invalid UUID for user ID');
-  }
-
-  return await client.user.findUnique({
-    where: {
-      id: userId, // Ensure we're fetching based on userId
-    },
+  return client.user.findUnique({
+    where: { id: userId },
     select: {
       integrations: {
-        where: {
-          name: 'INSTAGRAM',
-        },
-      },
-    },
+        where: { name: INTEGRATIONS.INSTAGRAM }
+      }
+    }
   })
 }
 
-// Create a new Instagram integration for the user
-export const createIntegration = async (
-  userId: string,
-  token: string,
-  expire: Date,
-  igId?: string
-) => {
-  // Log the userId before using it in Prisma query
-  console.log("Create Integration - User ID:", userId);
+interface CreateIntegrationParams {
+  userId: string
+  token: string
+  expire: Date
+  instagramId?: string
+}
 
-  if (!isValidUUID(userId)) {
-    throw new Error('Invalid UUID for user ID');
-  }
+export const createIntegration = async ({
+  userId,
+  token,
+  expire,
+  instagramId
+}: CreateIntegrationParams) => {
+  if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
-  return await client.user.update({
-    where: {
-      id: userId, // Ensure we're using userId here
-    },
+  return client.user.update({
+    where: { id: userId },
     data: {
       integrations: {
         create: {
+          name: INTEGRATIONS.INSTAGRAM, // Use enum value from schema
           token,
           expiresAt: expire,
-          instagramId: igId,
-        },
-      },
+          instagramId
+        }
+      }
     },
-    select: {
-      firstname: true,
-      lastname: true,
-    },
+    select: { firstname: true, lastname: true }
   })
 }
