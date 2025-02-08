@@ -4,6 +4,20 @@ import { INTEGRATIONS } from '@prisma/client'
 const isValidUUID = (str: string) => 
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)
 
+// Add and export updateIntegration
+export const updateIntegration = async (
+  token: string,
+  expire: Date,
+  id: string
+) => {
+  if (!isValidUUID(id)) throw new Error('Invalid UUID for integration update')
+
+  return client.integrations.update({
+    where: { id },
+    data: { token, expiresAt: expire }
+  })
+}
+
 interface CreateIntegrationParams {
   userId: string
   token: string
@@ -19,7 +33,7 @@ export const createIntegration = async ({
 }: CreateIntegrationParams) => {
   if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
-  const result = await client.user.update({
+  return client.user.update({
     where: { id: userId },
     data: {
       integrations: {
@@ -32,21 +46,10 @@ export const createIntegration = async ({
       }
     },
     select: { 
-      firstname: true, 
-      lastname: true,
-      integrations: {
-        where: { name: INTEGRATIONS.INSTAGRAM },
-        orderBy: { createdAt: 'desc' },
-        take: 1
-      }
+      firstname: true,
+      lastname: true
     }
   })
-
-  return {
-    firstname: result.firstname,
-    lastname: result.lastname,
-    integration: result.integrations[0]
-  }
 }
 
 export const getIntegration = async (userId: string) => {
