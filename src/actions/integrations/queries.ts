@@ -1,36 +1,8 @@
 import { client } from '@/lib/prisma'
 import { INTEGRATIONS } from '@prisma/client'
 
-const isValidUUID = (str: string) => {
-  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-  return uuidRegex.test(str)
-}
-
-export const updateIntegration = async (
-  token: string,
-  expire: Date,
-  id: string
-) => {
-  if (!isValidUUID(id)) throw new Error('Invalid UUID for integration update')
-
-  return client.integrations.update({
-    where: { id },
-    data: { token, expiresAt: expire }
-  })
-}
-
-export const getIntegration = async (userId: string) => {
-  if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
-
-  return client.user.findUnique({
-    where: { id: userId },
-    select: {
-      integrations: {
-        where: { name: INTEGRATIONS.INSTAGRAM }
-      }
-    }
-  })
-}
+const isValidUUID = (str: string) => 
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)
 
 interface CreateIntegrationParams {
   userId: string
@@ -47,18 +19,45 @@ export const createIntegration = async ({
 }: CreateIntegrationParams) => {
   if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
-  return client.user.update({
+  const result = await client.user.update({
     where: { id: userId },
     data: {
       integrations: {
         create: {
-          name: INTEGRATIONS.INSTAGRAM, // Use enum value from schema
+          name: INTEGRATIONS.INSTAGRAM,
           token,
           expiresAt: expire,
           instagramId
         }
       }
     },
-    select: { firstname: true, lastname: true }
+    select: { 
+      firstname: true, 
+      lastname: true,
+      integrations: {
+        where: { name: INTEGRATIONS.INSTAGRAM },
+        orderBy: { createdAt: 'desc' },
+        take: 1
+      }
+    }
+  })
+
+  return {
+    firstname: result.firstname,
+    lastname: result.lastname,
+    integration: result.integrations[0]
+  }
+}
+
+export const getIntegration = async (userId: string) => {
+  if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
+
+  return client.user.findUnique({
+    where: { id: userId },
+    select: {
+      integrations: {
+        where: { name: INTEGRATIONS.INSTAGRAM }
+      }
+    }
   })
 }

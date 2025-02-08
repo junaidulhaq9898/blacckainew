@@ -1,24 +1,35 @@
 import { onIntegrate } from '@/actions/integrations'
 import { redirect } from 'next/navigation'
-import React from 'react'
 
 type Props = {
   searchParams: {
-    code: string
+    code?: string
+    error?: string
   }
 }
 
-const Page = async ({ searchParams: { code } }: Props) => {
-  if (code) {
-    console.log(code)
-    const user = await onIntegrate(code.split('#_')[0])
-    if (user.status === 200) {
-      return redirect(
-        `/dashboard/${user.data?.firstname}${user.data?.lastname}/integrations`
-      )
+export default async function Page({ searchParams }: Props) {
+  const code = searchParams.code?.split('#_')[0]
+
+  if (!code) {
+    return redirect('/dashboard/integrations?error=missing_code')
+  }
+
+  try {
+    const result = await onIntegrate(code)
+
+    if ('error' in result) {
+      console.error('Integration failed:', result.error)
+      return redirect('/dashboard/integrations?error=instagram_failed')
     }
-  }
-  return redirect('/sign-up')
-}
 
-export default Page
+    return redirect(
+      `/dashboard/integrations?success=true` +
+      (result.data?.name ? `&user=${encodeURIComponent(result.data.name)}` : '')
+    )
+
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return redirect('/dashboard/integrations?error=unexpected_error')
+  }
+}

@@ -38,7 +38,7 @@ export const onIntegrate = async (code: string) => {
     const expireDate = new Date()
     expireDate.setDate(expireDate.getDate() + 60)
 
-    await createIntegration({
+    const integrationResult = await createIntegration({
       userId: user.id,
       token: token.access_token,
       expire: expireDate,
@@ -46,14 +46,20 @@ export const onIntegrate = async (code: string) => {
     })
 
     revalidatePath('/integrations')
-    return { success: true }
+    return { 
+      success: true,
+      data: {
+        name: [integrationResult.firstname, integrationResult.lastname]
+          .filter(Boolean).join(' ')
+      }
+    }
     
   } catch (error: any) {
     console.error('Integration failed:', error)
     return {
       error: error.response?.data?.message || 
       error.message || 
-      'Integration failed'
+      'Failed to complete Instagram integration'
     }
   }
 }
