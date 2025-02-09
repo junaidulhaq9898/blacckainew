@@ -18,11 +18,10 @@ export const onBoardUser = async () => {
   try {
     const found = await findUser(clerkUser.id)
     if (found) {
-      // Check if integrations exist (if any)
       if (found.integrations && found.integrations.length > 0) {
         const today = new Date()
-        // Using the first integration record
-        const time_left = found.integrations[0].expiresAt?.getTime()! - today.getTime()
+        const time_left =
+          found.integrations[0].expiresAt?.getTime()! - today.getTime()
         const days = Math.round(time_left / (1000 * 3600 * 24))
         if (days < 5) {
           console.log('Refreshing token...')
@@ -44,7 +43,8 @@ export const onBoardUser = async () => {
         data: {
           firstname: found.firstname,
           lastname: found.lastname,
-          integrations: found.integrations // now included
+          subscription: found.subscription, // now available
+          integrations: found.integrations
         }
       }
     }
@@ -75,7 +75,6 @@ export const onUserInfo = async () => {
 export const onSubscribe = async (session_id: string) => {
   const clerkUser = await onCurrentUser()
   try {
-    // Look up the database user record so we have a valid UUID
     const dbUser = await findUser(clerkUser.id)
     if (!dbUser) return { status: 404 }
 
