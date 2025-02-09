@@ -9,16 +9,16 @@ import { createIntegration, getIntegration } from './queries'
 
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy !== 'INSTAGRAM') throw new Error('Invalid integration strategy')
-  
+
   const oauthUrl = process.env.INSTAGRAM_EMBEDDED_OAUTH_URL
   if (!oauthUrl) throw new Error('Instagram OAuth URL not configured')
-  
+
   return redirect(oauthUrl)
 }
 
 export const onIntegrate = async (code: string) => {
   try {
-    // Get the authenticated Clerk user.
+    // Get authenticated Clerk user.
     const clerkUser = await onCurrentUser()
     if (!clerkUser?.id) throw new Error('User not authenticated')
 
@@ -29,12 +29,21 @@ export const onIntegrate = async (code: string) => {
     // Retrieve existing integrations.
     const existing = await getIntegration(userRecord.id)
     console.log('getIntegration result:', existing)
-    
-    // Defensive check: ensure integrations is an array.
-    const integrations = Array.isArray(existing?.integrations)
-      ? existing.integrations
-      : []
-    
+
+    // Defensive check: ensure that integrations is defined and is an array.
+    let integrations: any[] = []
+    if (existing && typeof existing === 'object') {
+      if (Array.isArray(existing.integrations)) {
+        integrations = existing.integrations
+      } else {
+        console.warn('existing.integrations is not an array. Got:', existing.integrations)
+      }
+    } else {
+      console.warn('getIntegration did not return an object. Got:', existing)
+    }
+    console.log('Integrations array:', integrations)
+
+    // If there are existing integrations, skip creation.
     if (integrations.length > 0) {
       revalidatePath('/integrations')
       return { success: 'Integration exists' }
@@ -57,12 +66,12 @@ export const onIntegrate = async (code: string) => {
     const expireDate = new Date()
     expireDate.setDate(expireDate.getDate() + 60)
 
-    // Create the integration record in the database.
+    // Create the integration record.
     const integrationResult = await createIntegration({
       userId: userRecord.id,
       token: token.access_token,
       expire: expireDate,
-      instagramId: data.id
+      instagramId: data.id,
     })
     if (!integrationResult) {
       throw new Error('Integration record creation failed')
@@ -74,15 +83,15 @@ export const onIntegrate = async (code: string) => {
       data: {
         name: [integrationResult.firstname, integrationResult.lastname]
           .filter(Boolean)
-          .join(' ')
-      }
+          .join(' '),
+      },
     }
   } catch (error: any) {
     console.error('Integration failed:', error)
     return {
       error: error.response?.data?.message ||
              error.message ||
-             'Failed to complete Instagram integration'
+             'Failed to complete Instagram integration',
     }
   }
 }
