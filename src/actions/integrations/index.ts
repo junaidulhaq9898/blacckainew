@@ -30,21 +30,14 @@ export const onIntegrate = async (code: string) => {
     const existing = await getIntegration(userRecord.id)
     console.log('getIntegration result:', existing)
 
-    // Defensive check: ensure that integrations is defined and is an array.
-    let integrations: any[] = []
-    if (existing && typeof existing === 'object') {
-      if (Array.isArray(existing.integrations)) {
-        integrations = existing.integrations
-      } else {
-        console.warn('existing.integrations is not an array. Got:', existing.integrations)
-      }
-    } else {
-      console.warn('getIntegration did not return an object. Got:', existing)
-    }
+    // Defensive check: Ensure integrations is defined and is an array.
+    const integrations = (existing && Array.isArray(existing.integrations))
+      ? existing.integrations
+      : []
     console.log('Integrations array:', integrations)
 
-    // If there are existing integrations, skip creation.
     if (integrations.length > 0) {
+      // Already connected—revalidate and return success.
       revalidatePath('/integrations')
       return { success: 'Integration exists' }
     }
@@ -78,7 +71,7 @@ export const onIntegrate = async (code: string) => {
     }
 
     revalidatePath('/integrations')
-    return { 
+    return {
       success: true,
       data: {
         name: [integrationResult.firstname, integrationResult.lastname]
