@@ -3,48 +3,43 @@ import { client } from '@/lib/prisma'
 import type { User, Integrations, Subscription } from '@prisma/client'
 
 /**
- * Find a user by their Clerk ID.
- * Include the integrations and subscription relations so that these properties are available.
+ * Finds a user by their Clerk ID and includes integrations and subscription.
  */
 export const findUser = async (
   clerkId: string
 ): Promise<
-  (User & { 
-    integrations: Integrations[]; 
-    subscription: Subscription | null 
-  }) | null
+  (User & { integrations: Integrations[]; subscription: Subscription | null }) | null
 > => {
   return client.user.findUnique({
     where: { clerkId },
     include: { 
       integrations: true,
-      subscription: true // Include subscription so that it is available on the returned user object
+      subscription: true 
     }
   })
 }
 
 /**
- * Create a new user in the database.
- * The database will generate the UUID.
+ * Creates a new user.
  */
 export const createUser = async (
   clerkId: string,
   firstName: string,
   lastName: string,
   email: string
-): Promise<User> => {
+) => {
   return client.user.create({
     data: {
       clerkId,
       firstname: firstName,
       lastname: lastName,
-      email
+      email,
     }
   })
 }
 
 /**
- * Update the user's subscription.
+ * Updates the user's subscription.
  */
 export const updateSubscription = async (
   userId: string,

@@ -2,7 +2,7 @@
 import { client } from '@/lib/prisma'
 import { INTEGRATIONS } from '@prisma/client'
 
-// Inline helper for UUID validation
+// Inline helper for UUID validation.
 const isValidUUID = (str: string): boolean =>
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)
 
@@ -45,7 +45,7 @@ export const createIntegration = async ({
 }
 
 /**
- * Updates an existing integration record with a new token and expiration.
+ * Updates an existing integration record.
  */
 export const updateIntegration = async (
   token: string,
@@ -61,7 +61,7 @@ export const updateIntegration = async (
 }
 
 /**
- * Retrieves the Instagram integration for the given user.
+ * Retrieves the Instagram integration for a given user.
  */
 export const getIntegration = async (userId: string) => {
   if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')

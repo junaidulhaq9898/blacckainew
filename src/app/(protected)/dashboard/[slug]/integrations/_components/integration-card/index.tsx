@@ -36,8 +36,7 @@ export default function IntegrationCard({
     }
   }
 
-  // Cast the user info so that integrations is known to exist.
-  // Mark integrations as optional, then default to an empty array.
+  // Cast the user info so that integrations is known (or defaults to an empty array).
   const userInfo = data?.data as (User & { integrations?: Integrations[] }) | undefined
   const integrations: Integrations[] = userInfo?.integrations ?? []
   const isConnected = integrations.some((i: Integrations) => i.name === strategy)

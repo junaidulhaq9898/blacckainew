@@ -1,3 +1,4 @@
+// /src/actions/integrations/index.ts
 'use server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
@@ -9,16 +10,16 @@ import { createIntegration, getIntegration } from './queries'
 
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy !== 'INSTAGRAM') throw new Error('Invalid integration strategy')
-
+  
   const oauthUrl = process.env.INSTAGRAM_EMBEDDED_OAUTH_URL
   if (!oauthUrl) throw new Error('Instagram OAuth URL not configured')
-
+  
   return redirect(oauthUrl)
 }
 
 export const onIntegrate = async (code: string) => {
   try {
-    // Get authenticated Clerk user.
+    // Get the authenticated Clerk user.
     const clerkUser = await onCurrentUser()
     if (!clerkUser?.id) throw new Error('User not authenticated')
 
@@ -30,19 +31,18 @@ export const onIntegrate = async (code: string) => {
     const existing = await getIntegration(userRecord.id)
     console.log('getIntegration result:', existing)
 
-    // Defensive check: Ensure integrations is defined and is an array.
+    // Defensive: ensure integrations is an array.
     const integrations = (existing && Array.isArray(existing.integrations))
       ? existing.integrations
       : []
     console.log('Integrations array:', integrations)
 
     if (integrations.length > 0) {
-      // Already connected—revalidate and return success.
       revalidatePath('/integrations')
       return { success: 'Integration exists' }
     }
 
-    // Exchange the provided code for tokens.
+    // Exchange the code for tokens.
     const token = await generateTokens(code)
     if (!token?.access_token) throw new Error('Failed to get access token')
 
@@ -55,7 +55,7 @@ export const onIntegrate = async (code: string) => {
       throw new Error('Failed to retrieve Instagram user id')
     }
 
-    // Set token expiry to 60 days from now.
+    // Set token expiry 60 days from now.
     const expireDate = new Date()
     expireDate.setDate(expireDate.getDate() + 60)
 
@@ -71,7 +71,7 @@ export const onIntegrate = async (code: string) => {
     }
 
     revalidatePath('/integrations')
-    return {
+    return { 
       success: true,
       data: {
         name: [integrationResult.firstname, integrationResult.lastname]
