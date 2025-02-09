@@ -1,3 +1,4 @@
+// /src/app/(protected)/dashboard/[slug]/integrations/_components/integration-card/index.tsx
 'use client'
 import { onOAuthInstagram } from '@/actions/integrations'
 import { onUserInfo } from '@/actions/user'
@@ -6,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import type { Integrations, User } from '@prisma/client'
 
 export default function IntegrationCard({
   strategy,
@@ -35,9 +37,9 @@ export default function IntegrationCard({
     }
   }
 
-  const isConnected = data?.data?.integrations?.some(
-    (i) => i.name === strategy
-  )
+  // Cast the user info so that integrations is known to exist.
+  const userInfo = data?.data as (User & { integrations: Integrations[] }) | undefined
+  const isConnected = userInfo?.integrations?.some((i: Integrations) => i.name === strategy)
 
   return (
     <div className="border-2 border-[#3352CC] rounded-2xl p-5 flex items-center gap-4">
@@ -48,7 +50,7 @@ export default function IntegrationCard({
       </div>
       <Button
         onClick={handleConnect}
-        disabled={isConnected || isLoading}
+        disabled={!!isConnected || isLoading}
         className="bg-gradient-to-br from-[#3352CC] to-[#1C2D70] text-white rounded-full hover:opacity-80"
       >
         {isLoading ? (

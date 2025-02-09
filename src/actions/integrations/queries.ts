@@ -4,7 +4,6 @@ import { INTEGRATIONS } from '@prisma/client'
 const isValidUUID = (str: string) => 
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)
 
-// Add and export updateIntegration
 export const updateIntegration = async (
   token: string,
   expire: Date,
