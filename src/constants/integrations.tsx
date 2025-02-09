@@ -1,3 +1,4 @@
+// integraion.tsx (or maybe integrations.tsx?)
 import { InstagramDuoToneBlue, SalesForceDuoToneBlue } from "@/icons"
 
 type Props = {
