@@ -1,21 +1,10 @@
+// /src/actions/integrations/queries.ts
 import { client } from '@/lib/prisma'
 import { INTEGRATIONS } from '@prisma/client'
 
-const isValidUUID = (str: string) => 
+// Inline helper for UUID validation
+const isValidUUID = (str: string): boolean =>
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str)
-
-export const updateIntegration = async (
-  token: string,
-  expire: Date,
-  id: string
-) => {
-  if (!isValidUUID(id)) throw new Error('Invalid UUID for integration update')
-
-  return client.integrations.update({
-    where: { id },
-    data: { token, expiresAt: expire }
-  })
-}
 
 interface CreateIntegrationParams {
   userId: string
@@ -24,11 +13,15 @@ interface CreateIntegrationParams {
   instagramId?: string
 }
 
+/**
+ * Creates an integration record by updating the user record.
+ * Returns selected user fields.
+ */
 export const createIntegration = async ({
   userId,
   token,
   expire,
-  instagramId
+  instagramId,
 }: CreateIntegrationParams) => {
   if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
@@ -40,17 +33,36 @@ export const createIntegration = async ({
           name: INTEGRATIONS.INSTAGRAM,
           token,
           expiresAt: expire,
-          instagramId
-        }
-      }
+          instagramId,
+        },
+      },
     },
-    select: { 
+    select: {
       firstname: true,
-      lastname: true
-    }
+      lastname: true,
+    },
   })
 }
 
+/**
+ * Updates an existing integration record with a new token and expiration.
+ */
+export const updateIntegration = async (
+  token: string,
+  expire: Date,
+  id: string
+) => {
+  if (!isValidUUID(id)) throw new Error('Invalid UUID for integration update')
+
+  return client.integrations.update({
+    where: { id },
+    data: { token, expiresAt: expire },
+  })
+}
+
+/**
+ * Retrieves the Instagram integration for the given user.
+ */
 export const getIntegration = async (userId: string) => {
   if (!isValidUUID(userId)) throw new Error('Invalid UUID for user ID')
 
@@ -58,8 +70,8 @@ export const getIntegration = async (userId: string) => {
     where: { id: userId },
     select: {
       integrations: {
-        where: { name: INTEGRATIONS.INSTAGRAM }
-      }
-    }
+        where: { name: INTEGRATIONS.INSTAGRAM },
+      },
+    },
   })
 }
