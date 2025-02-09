@@ -1,4 +1,3 @@
-// /src/app/(protected)/dashboard/[slug]/integrations/_components/integration-card/index.tsx
 'use client'
 import { onOAuthInstagram } from '@/actions/integrations'
 import { onUserInfo } from '@/actions/user'
@@ -38,8 +37,12 @@ export default function IntegrationCard({
   }
 
   // Cast the user info so that integrations is known to exist.
-  const userInfo = data?.data as (User & { integrations: Integrations[] }) | undefined
-  const isConnected = userInfo?.integrations?.some((i: Integrations) => i.name === strategy)
+  // Note: Mark integrations as optional (integrations?: Integrations[]) in case it's undefined.
+  const userInfo = data?.data as (User & { integrations?: Integrations[] }) | undefined
+  // Default integrations to an empty array if it is undefined.
+  const integrations: Integrations[] = userInfo?.integrations ?? []
+  // Check if there is an integration whose name matches the strategy.
+  const isConnected = integrations.some((i: Integrations) => i.name === strategy)
 
   return (
     <div className="border-2 border-[#3352CC] rounded-2xl p-5 flex items-center gap-4">
