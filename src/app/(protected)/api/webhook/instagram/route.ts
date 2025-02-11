@@ -20,21 +20,23 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const webhook_payload = await req.json()
 
-  // Log the webhook payload to check if it's correct
-  console.log("Webhook Payload:", webhook_payload);
+  // Log the entire webhook payload to check its structure
+  console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
 
   let matcher
   try {
-    // Check if messaging is available and match the keyword
-    if (webhook_payload.entry[0].messaging) {
+    // Validate if messaging exists in the payload
+    if (webhook_payload.entry && webhook_payload.entry[0] && webhook_payload.entry[0].messaging) {
+      console.log("Messaging Found:", webhook_payload.entry[0].messaging);
       matcher = await matchKeyword(
         webhook_payload.entry[0].messaging[0].message.text
       )
       console.log("Keyword match result (messaging):", matcher);  // Log the match result
     }
 
-    // Check if changes are available and match the keyword
-    if (webhook_payload.entry[0].changes) {
+    // Validate if changes exist in the payload
+    if (webhook_payload.entry && webhook_payload.entry[0] && webhook_payload.entry[0].changes) {
+      console.log("Changes Found:", webhook_payload.entry[0].changes);
       matcher = await matchKeyword(
         webhook_payload.entry[0].changes[0].value.text
       )
