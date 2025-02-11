@@ -19,35 +19,42 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const webhook_payload = await req.json()
+
+  // Log the webhook payload to check if it's correct
+  console.log("Webhook Payload:", webhook_payload);
+
   let matcher
   try {
+    // Check if messaging is available and match the keyword
     if (webhook_payload.entry[0].messaging) {
       matcher = await matchKeyword(
         webhook_payload.entry[0].messaging[0].message.text
       )
+      console.log("Keyword match result (messaging):", matcher);  // Log the match result
     }
 
+    // Check if changes are available and match the keyword
     if (webhook_payload.entry[0].changes) {
       matcher = await matchKeyword(
         webhook_payload.entry[0].changes[0].value.text
       )
+      console.log("Keyword match result (changes):", matcher);  // Log the match result
     }
 
     if (matcher && matcher.automationId) {
-      console.log('Matched')
-      // We have a keyword matcher
+      console.log('Matched automationId:', matcher.automationId);  // Log when automationId is matched
 
+      // If messaging is available, handle the automation logic
       if (webhook_payload.entry[0].messaging) {
         const automation = await getKeywordAutomation(
           matcher.automationId,
           true
         )
+        console.log("Retrieved automation:", automation);  // Log the retrieved automation
 
         if (automation && automation.trigger) {
-          if (
-            automation.listener &&
-            automation.listener.listener === 'MESSAGE'
-          ) {
+          // Handling MESSAGE listener
+          if (automation.listener && automation.listener.listener === 'MESSAGE') {
             const direct_message = await sendDM(
               webhook_payload.entry[0].id,
               webhook_payload.entry[0].messaging[0].sender.id,
@@ -59,15 +66,14 @@ export async function POST(req: NextRequest) {
               const tracked = await trackResponses(automation.id, 'DM')
               if (tracked) {
                 return NextResponse.json(
-                  {
-                    message: 'Message sent',
-                  },
+                  { message: 'Message sent' },
                   { status: 200 }
                 )
               }
             }
           }
 
+          // Handling SMARTAI listener
           if (
             automation.listener &&
             automation.listener.listener === 'SMARTAI' &&
@@ -82,6 +88,8 @@ export async function POST(req: NextRequest) {
                 },
               ],
             })
+
+            console.log("Smart AI message response:", smart_ai_message);
 
             if (smart_ai_message.choices[0].message.content) {
               const reciever = createChatHistory(
@@ -111,9 +119,7 @@ export async function POST(req: NextRequest) {
                 const tracked = await trackResponses(automation.id, 'DM')
                 if (tracked) {
                   return NextResponse.json(
-                    {
-                      message: 'Message sent',
-                    },
+                    { message: 'Message sent' },
                     { status: 200 }
                   )
                 }
@@ -123,6 +129,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Handle changes if the field is 'comments'
       if (
         webhook_payload.entry[0].changes &&
         webhook_payload.entry[0].changes[0].field === 'comments'
@@ -132,32 +139,19 @@ export async function POST(req: NextRequest) {
           false
         )
 
-        console.log('geting the automations')
+        console.log('Getting the automations for comments');
 
         const automations_post = await getKeywordPost(
           webhook_payload.entry[0].changes[0].value.media.id,
           automation?.id!
         )
 
-        console.log('found keyword ', automations_post)
+        console.log('Found keyword:', automations_post);
 
         if (automation && automations_post && automation.trigger) {
-          console.log('first if')
+          // Handling MESSAGE listener for comments
           if (automation.listener) {
-            console.log('first if')
             if (automation.listener.listener === 'MESSAGE') {
-              console.log(
-                'SENDING DM, WEB HOOK PAYLOAD',
-                webhook_payload,
-                'changes',
-                webhook_payload.entry[0].changes[0].value.from
-              )
-
-              console.log(
-                'COMMENT VERSION:',
-                webhook_payload.entry[0].changes[0].value.from.id
-              )
-
               const direct_message = await sendPrivateMessage(
                 webhook_payload.entry[0].id,
                 webhook_payload.entry[0].changes[0].value.id,
@@ -165,20 +159,19 @@ export async function POST(req: NextRequest) {
                 automation.User?.integrations[0].token!
               )
 
-              console.log('DM SENT', direct_message.data)
               if (direct_message.status === 200) {
                 const tracked = await trackResponses(automation.id, 'COMMENT')
 
                 if (tracked) {
                   return NextResponse.json(
-                    {
-                      message: 'Message sent',
-                    },
+                    { message: 'Message sent' },
                     { status: 200 }
                   )
                 }
               }
             }
+
+            // Handling SMARTAI listener for comments
             if (
               automation.listener.listener === 'SMARTAI' &&
               automation.User?.subscription?.plan === 'PRO'
@@ -192,6 +185,7 @@ export async function POST(req: NextRequest) {
                   },
                 ],
               })
+
               if (smart_ai_message.choices[0].message.content) {
                 const reciever = createChatHistory(
                   automation.id,
@@ -221,9 +215,7 @@ export async function POST(req: NextRequest) {
 
                   if (tracked) {
                     return NextResponse.json(
-                      {
-                        message: 'Message sent',
-                      },
+                      { message: 'Message sent' },
                       { status: 200 }
                     )
                   }
@@ -235,11 +227,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // If no match is found, try looking up customer history and matching automation
     if (!matcher) {
       const customer_history = await getChatHistory(
         webhook_payload.entry[0].messaging[0].recipient.id,
         webhook_payload.entry[0].messaging[0].sender.id
       )
+
+      console.log('Customer history:', customer_history);
 
       if (customer_history.history.length > 0) {
         const automation = await findAutomation(customer_history.automationId!)
@@ -286,12 +281,8 @@ export async function POST(req: NextRequest) {
             )
 
             if (direct_message.status === 200) {
-              //if successfully send we return
-
               return NextResponse.json(
-                {
-                  message: 'Message sent',
-                },
+                { message: 'Message sent' },
                 { status: 200 }
               )
             }
@@ -306,6 +297,7 @@ export async function POST(req: NextRequest) {
         { status: 200 }
       )
     }
+
     return NextResponse.json(
       {
         message: 'No automation set',
@@ -313,11 +305,12 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
+    console.error("Error:", error); // Log the error for debugging
     return NextResponse.json(
       {
-        message: 'No automation set',
+        message: 'Error occurred during automation process',
       },
-      { status: 200 }
+      { status: 500 }
     )
   }
 }
