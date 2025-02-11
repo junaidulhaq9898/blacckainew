@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       console.log("Keyword match result (changes):", matcher);  // Log the match result
     }
 
+    // Check if matcher exists and contains automationId
     if (matcher && matcher.automationId) {
       console.log('Matched automationId:', matcher.automationId);  // Log when automationId is matched
 
@@ -225,10 +226,10 @@ export async function POST(req: NextRequest) {
           }
         }
       }
-    }
+    } else {
+      console.log('No automationId found or keyword match failed.');  // Log when no automationId is found
 
-    // If no match is found, try looking up customer history and matching automation
-    if (!matcher) {
+      // If no match is found, try looking up customer history and matching automation
       const customer_history = await getChatHistory(
         webhook_payload.entry[0].messaging[0].recipient.id,
         webhook_payload.entry[0].messaging[0].sender.id
