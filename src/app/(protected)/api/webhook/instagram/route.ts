@@ -1,4 +1,6 @@
-import { findAutomation } from '@/actions/automations/queries'
+'use server'
+
+import { findAutomation, updateAutomation } from '@/actions/automations/queries'
 import {
   createChatHistory,
   getChatHistory,
@@ -63,8 +65,19 @@ export async function POST(req: NextRequest) {
     if (matcher && matcher.automationId) {
       console.log('Matched automationId:', matcher.automationId);  // Log when automationId is matched
 
-      const automation = await getKeywordAutomation(matcher.automationId, true);
+      const automation = await findAutomation(matcher.automationId);
+      if (!automation) {
+        console.log('No automation found for automationId:', matcher.automationId);
+        return NextResponse.json({ message: 'No automation found' }, { status: 404 });
+      }
       console.log("Retrieved automation:", automation);  // Log the retrieved automation
+
+      // Check if the automation is active
+      if (!automation.active) {
+        console.log('Automation is not active, activating it now.');
+        // Update the automation status to active
+        await updateAutomation(automation.id, { active: true });
+      }
 
       if (automation && automation.trigger) {
         // Handling MESSAGE listener
