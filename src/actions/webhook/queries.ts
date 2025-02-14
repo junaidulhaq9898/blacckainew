@@ -2,18 +2,10 @@
 
 import { client } from '@/lib/prisma'
 
-interface ChatHistory {
-  id: string
-  createdAt: Date
-  automationId: string | null
-  senderId: string | null
-  reciever: string | null
-  message: string | null
-}
-
 export async function matchKeyword(text: string) {
   try {
-    console.log('Attempting to match keyword:', text)
+    console.log('Matching keyword for text:', text)
+    
     const automations = await client.automation.findMany({
       where: {
         active: true,
@@ -22,13 +14,27 @@ export async function matchKeyword(text: string) {
         }
       },
       include: {
-        keywords: true
+        keywords: true,
+        User: {
+          include: {
+            integrations: true
+          }
+        }
       }
     })
 
     for (const automation of automations) {
+      // Verify integration token is valid
+      const integration = automation.User?.integrations[0]
+      if (!integration?.token || 
+          (integration.expiresAt && new Date(integration.expiresAt) < new Date())) {
+        console.log(`Skipping automation ${automation.id} - invalid token`)
+        continue
+      }
+
       for (const keyword of automation.keywords) {
         if (text.toLowerCase().includes(keyword.word.toLowerCase())) {
+          console.log(`Matched keyword: ${keyword.word} for automation: ${automation.id}`)
           return {
             automationId: automation.id,
             keyword: keyword.word
@@ -36,6 +42,8 @@ export async function matchKeyword(text: string) {
         }
       }
     }
+
+    console.log('No keyword match found')
     return null
   } catch (error) {
     console.error('Error in matchKeyword:', error)
@@ -45,7 +53,9 @@ export async function matchKeyword(text: string) {
 
 export async function getKeywordAutomation(id: string, includeToken: boolean) {
   try {
-    return await client.automation.findUnique({
+    console.log(`Getting automation: ${id}, includeToken: ${includeToken}`)
+    
+    const automation = await client.automation.findUnique({
       where: {
         id,
         active: true
@@ -62,22 +72,15 @@ export async function getKeywordAutomation(id: string, includeToken: boolean) {
         }
       }
     })
+
+    if (!automation) {
+      console.log(`No automation found for id: ${id}`)
+      return null
+    }
+
+    return automation
   } catch (error) {
     console.error('Error in getKeywordAutomation:', error)
-    return null
-  }
-}
-
-export async function getKeywordPost(mediaId: string, automationId: string) {
-  try {
-    return await client.post.findFirst({
-      where: {
-        postid: mediaId,
-        automationId
-      }
-    })
-  } catch (error) {
-    console.error('Error in getKeywordPost:', error)
     return null
   }
 }
@@ -88,18 +91,30 @@ export async function createChatHistory(
   senderId: string,
   message: string
 ) {
-  return client.dms.create({
-    data: {
+  try {
+    console.log('Creating chat history:', {
+      automationId,
+      recipientId,
+      senderId,
+      messageLength: message.length
+    })
+
+    return {
       automationId,
       reciever: recipientId,
       senderId,
       message
     }
-  })
+  } catch (error) {
+    console.error('Error in createChatHistory:', error)
+    throw error
+  }
 }
 
 export async function getChatHistory(recipientId: string, senderId: string) {
   try {
+    console.log('Getting chat history for:', { recipientId, senderId })
+
     const messages = await client.dms.findMany({
       where: {
         OR: [
@@ -113,15 +128,15 @@ export async function getChatHistory(recipientId: string, senderId: string) {
       take: 10
     })
 
-    // Transform messages into the expected format
-    const formattedHistory = messages.map(msg => ({
+    // Transform messages for OpenAI format
+    const history = messages.map(msg => ({
       role: msg.senderId === recipientId ? 'assistant' : 'user',
       content: msg.message || ''
     }))
 
     return {
       automationId: messages[0]?.automationId || null,
-      history: formattedHistory
+      history
     }
   } catch (error) {
     console.error('Error in getChatHistory:', error)
@@ -134,6 +149,8 @@ export async function getChatHistory(recipientId: string, senderId: string) {
 
 export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT') {
   try {
+    console.log(`Tracking ${type} response for automation: ${automationId}`)
+    
     return await client.listener.update({
       where: {
         automationId
@@ -145,6 +162,22 @@ export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT
     })
   } catch (error) {
     console.error('Error in trackResponses:', error)
+    return null
+  }
+}
+
+export async function getKeywordPost(mediaId: string, automationId: string) {
+  try {
+    console.log(`Getting post for media: ${mediaId}, automation: ${automationId}`)
+    
+    return await client.post.findFirst({
+      where: {
+        postid: mediaId,
+        automationId
+      }
+    })
+  } catch (error) {
+    console.error('Error in getKeywordPost:', error)
     return null
   }
 }
