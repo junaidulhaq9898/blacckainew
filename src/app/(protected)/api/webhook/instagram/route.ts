@@ -1,5 +1,3 @@
-'use server'
-
 import { findAutomation, updateAutomation } from '@/actions/automations/queries'
 import {
   createChatHistory,
@@ -32,14 +30,13 @@ export async function POST(req: NextRequest) {
     if (webhook_payload.entry[0].messaging) {
       console.log("Messaging Found:", webhook_payload.entry[0].messaging);
 
-      // Check if the message is an echo message (Instagram often sends echoes of sent messages)
+      // Skip echo messages and log it
       const message = webhook_payload.entry[0].messaging[0]?.message;
       if (message?.is_echo) {
-        console.log("Skipping echo message.");
+        console.log("Skipping echo message (is_echo detected).");
         return NextResponse.json({ message: 'Echo message received, skipping.' }, { status: 200 });
       }
 
-      // Check if the message contains valid text
       if (message?.text) {
         matcher = await matchKeyword(message.text);  // Match the keyword in the message text
         console.log("Keyword match result (messaging):", matcher);
