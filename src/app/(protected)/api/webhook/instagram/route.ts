@@ -29,15 +29,20 @@ export async function POST(req: NextRequest) {
     // Check if messaging is available and match the keyword
     if (webhook_payload.entry[0].messaging) {
       console.log("Messaging Found:", webhook_payload.entry[0].messaging);
-
-      // Check if 'text' exists to avoid issues with 'undefined' (new accounts might not always have 'text' field)
-      const messageText = webhook_payload.entry[0].messaging[0]?.message?.text || '';
       
-      if (messageText) {
-        matcher = await matchKeyword(messageText)
-        console.log("Keyword match result (messaging):", matcher);  // Log the match result
+      // Check if the message is an echo message (Instagram often sends echoes of sent messages)
+      const message = webhook_payload.entry[0].messaging[0]?.message;
+      if (message?.is_echo) {
+        console.log("Skipping echo message.");
+        return NextResponse.json({ message: 'Echo message received, skipping.' }, { status: 200 });
+      }
+
+      // Check if the message contains valid text
+      if (message?.text) {
+        matcher = await matchKeyword(message.text);  // Match the keyword in the message text
+        console.log("Keyword match result (messaging):", matcher);
       } else {
-        console.log("No message text found for keyword matching");
+        console.log("No valid text in message.");
       }
     }
 
@@ -45,12 +50,12 @@ export async function POST(req: NextRequest) {
     if (webhook_payload.entry[0].changes) {
       console.log("Changes Found:", webhook_payload.entry[0].changes);
       const commentText = webhook_payload.entry[0].changes[0]?.value?.text || '';
-      
+
       if (commentText) {
-        matcher = await matchKeyword(commentText)
+        matcher = await matchKeyword(commentText);
         console.log("Keyword match result (changes):", matcher);  // Log the match result
       } else {
-        console.log("No comment text found for keyword matching");
+        console.log("No comment text found for keyword matching.");
       }
     }
 
@@ -58,11 +63,11 @@ export async function POST(req: NextRequest) {
     if (matcher && matcher.automationId) {
       console.log('Matched automationId:', matcher.automationId);  // Log when automationId is matched
 
-      const automation = await getKeywordAutomation(matcher.automationId, true)
+      const automation = await getKeywordAutomation(matcher.automationId, true);
       console.log("Retrieved automation:", automation);  // Log the retrieved automation
 
       if (automation && automation.trigger) {
-        // Handle MESSAGE listener
+        // Handling MESSAGE listener
         if (automation.listener && automation.listener.listener === 'MESSAGE') {
           const direct_message = await sendDM(
             webhook_payload.entry[0].id,
