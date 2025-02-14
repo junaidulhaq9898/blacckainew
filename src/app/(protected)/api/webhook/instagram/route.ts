@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Check if messaging is available and match the keyword
     if (webhook_payload.entry[0].messaging) {
       console.log("Messaging Found:", webhook_payload.entry[0].messaging);
-      
+
       // Check if the message is an echo message (Instagram often sends echoes of sent messages)
       const message = webhook_payload.entry[0].messaging[0]?.message;
       if (message?.is_echo) {
