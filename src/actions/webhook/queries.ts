@@ -1,127 +1,150 @@
+// actions/webhook/queries.ts
+
 import { client } from '@/lib/prisma'
 
-export const matchKeyword = async (keyword: string) => {
-  return await client.keyword.findFirst({
-    where: {
-      word: {
-        equals: keyword,
-        mode: 'insensitive',
-      },
-    },
-  })
+interface ChatHistory {
+  id: string
+  createdAt: Date
+  automationId: string | null
+  senderId: string | null
+  reciever: string | null
+  message: string | null
 }
 
-export const getKeywordAutomation = async (
-  automationId: string,
-  dm: boolean
-) => {
-  return await client.automation.findUnique({
-    where: {
-      id: automationId,
-    },
-
-    include: {
-      dms: dm,
-      trigger: {
-        where: {
-          type: dm ? 'DM' : 'COMMENT',
-        },
+export async function matchKeyword(text: string) {
+  try {
+    console.log('Attempting to match keyword:', text)
+    const automations = await client.automation.findMany({
+      where: {
+        active: true,
+        keywords: {
+          some: {}
+        }
       },
-      listener: true,
-      User: {
-        select: {
-          subscription: {
-            select: {
-              plan: true,
-            },
-          },
-          integrations: {
-            select: {
-              token: true,
-            },
-          },
-        },
-      },
-    },
-  })
-}
-export const trackResponses = async (
-  automationId: string,
-  type: 'COMMENT' | 'DM'
-) => {
-  if (type === 'COMMENT') {
-    return await client.listener.update({
-      where: { automationId },
-      data: {
-        commentCount: {
-          increment: 1,
-        },
-      },
+      include: {
+        keywords: true
+      }
     })
-  }
 
-  if (type === 'DM') {
-    return await client.listener.update({
-      where: { automationId },
-      data: {
-        dmCount: {
-          increment: 1,
-        },
-      },
-    })
+    for (const automation of automations) {
+      for (const keyword of automation.keywords) {
+        if (text.toLowerCase().includes(keyword.word.toLowerCase())) {
+          return {
+            automationId: automation.id,
+            keyword: keyword.word
+          }
+        }
+      }
+    }
+    return null
+  } catch (error) {
+    console.error('Error in matchKeyword:', error)
+    return null
   }
 }
 
-export const createChatHistory = (
+export async function getKeywordAutomation(id: string, includeToken: boolean) {
+  try {
+    return await client.automation.findUnique({
+      where: {
+        id,
+        active: true
+      },
+      include: {
+        keywords: true,
+        trigger: true,
+        listener: true,
+        User: {
+          include: {
+            subscription: true,
+            integrations: includeToken
+          }
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error in getKeywordAutomation:', error)
+    return null
+  }
+}
+
+export async function getKeywordPost(mediaId: string, automationId: string) {
+  try {
+    return await client.post.findFirst({
+      where: {
+        postid: mediaId,
+        automationId
+      }
+    })
+  } catch (error) {
+    console.error('Error in getKeywordPost:', error)
+    return null
+  }
+}
+
+export async function createChatHistory(
   automationId: string,
-  sender: string,
-  reciever: string,
+  recipientId: string,
+  senderId: string,
   message: string
-) => {
-  return client.automation.update({
-    where: {
-      id: automationId,
-    },
+) {
+  return client.dms.create({
     data: {
-      dms: {
-        create: {
-          reciever,
-          senderId: sender,
-          message,
-        },
-      },
-    },
-  })
-}
-
-export const getKeywordPost = async (postId: string, automationId: string) => {
-  return await client.post.findFirst({
-    where: {
-      AND: [{ postid: postId }, { automationId }],
-    },
-    select: { automationId: true },
-  })
-}
-
-export const getChatHistory = async (sender: string, reciever: string) => {
-  const history = await client.dms.findMany({
-    where: {
-      AND: [{ senderId: sender }, { reciever }],
-    },
-    orderBy: { createdAt: 'asc' },
-  })
-  const chatSession: {
-    role: 'assistant' | 'user'
-    content: string
-  }[] = history.map((chat) => {
-    return {
-      role: chat.reciever ? 'assistant' : 'user',
-      content: chat.message!,
+      automationId,
+      reciever: recipientId,
+      senderId,
+      message
     }
   })
+}
 
-  return {
-    history: chatSession,
-    automationId: history[history.length - 1].automationId,
+export async function getChatHistory(recipientId: string, senderId: string) {
+  try {
+    const messages = await client.dms.findMany({
+      where: {
+        OR: [
+          { reciever: recipientId, senderId },
+          { reciever: senderId, senderId: recipientId }
+        ]
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      take: 10
+    })
+
+    // Transform messages into the expected format
+    const formattedHistory = messages.map(msg => ({
+      role: msg.senderId === recipientId ? 'assistant' : 'user',
+      content: msg.message || ''
+    }))
+
+    return {
+      automationId: messages[0]?.automationId || null,
+      history: formattedHistory
+    }
+  } catch (error) {
+    console.error('Error in getChatHistory:', error)
+    return {
+      automationId: null,
+      history: []
+    }
+  }
+}
+
+export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT') {
+  try {
+    return await client.listener.update({
+      where: {
+        automationId
+      },
+      data: {
+        dmCount: type === 'DM' ? { increment: 1 } : undefined,
+        commentCount: type === 'COMMENT' ? { increment: 1 } : undefined
+      }
+    })
+  } catch (error) {
+    console.error('Error in trackResponses:', error)
+    return null
   }
 }
