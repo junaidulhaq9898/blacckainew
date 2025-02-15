@@ -1,5 +1,3 @@
-// components/automation/trigger/index.tsx
-
 'use client'
 
 import { useQueryAutomation } from '@/hooks/user-queries'
