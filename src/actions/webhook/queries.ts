@@ -1,217 +1,127 @@
-// actions/webhook/queries.ts
 import { client } from '@/lib/prisma'
 
-export async function matchKeyword(text: string) {
-  try {
-    console.log('Matching keyword for text:', text)
-
-    // Find active automations with associated keywords
-    const automations = await client.automation.findMany({
-      where: {
-        active: true,
-        keywords: {
-          some: {}
-        }
+export const matchKeyword = async (keyword: string) => {
+  return await client.keyword.findFirst({
+    where: {
+      word: {
+        equals: keyword,
+        mode: 'insensitive',
       },
-      include: {
-        keywords: true,
-        User: {
-          include: {
-            integrations: true
-          }
-        }
-      }
-    })
-
-    // Loop through automations and match the keyword in the message text
-    for (const automation of automations) {
-      // Verify integration token is valid
-      const integration = automation.User?.integrations[0]
-      if (!integration?.token || 
-          (integration.expiresAt && new Date(integration.expiresAt) < new Date())) {
-        console.log(`Skipping automation ${automation.id} - invalid token`)
-        continue
-      }
-
-      // Match the message text with keywords
-      for (const keyword of automation.keywords) {
-        if (text.toLowerCase().includes(keyword.word.toLowerCase())) {
-          console.log(`Matched keyword: ${keyword.word} for automation: ${automation.id}`)
-          return {
-            automationId: automation.id,
-            keyword: keyword.word
-          }
-        }
-      }
-    }
-
-    console.log('No keyword match found')
-    return null
-  } catch (error) {
-    console.error('Error in matchKeyword:', error)
-    return null
-  }
+    },
+  })
 }
 
-export async function getKeywordAutomation(id: string, includeToken: boolean) {
-  try {
-    console.log(`Getting automation: ${id}, includeToken: ${includeToken}`)
-    
-    // Fetch automation details from the database
-    const automation = await client.automation.findUnique({
-      where: {
-        id,
-        active: true
-      },
-      include: {
-        keywords: true,
-        trigger: true,
-        listener: true,
-        User: {
-          include: {
-            subscription: true,
-            integrations: includeToken
-          }
-        }
-      }
-    })
-
-    // Return null if no automation found
-    if (!automation) {
-      console.log(`No automation found for id: ${id}`)
-      return null
-    }
-
-    return automation
-  } catch (error) {
-    console.error('Error in getKeywordAutomation:', error)
-    return null
-  }
-}
-
-export async function createChatHistory(
+export const getKeywordAutomation = async (
   automationId: string,
-  recipientId: string,
-  senderId: string,
-  message: string
-) {
-  try {
-    console.log('Creating chat history:', {
-      automationId,
-      recipientId,
-      senderId,
-      messageLength: message.length
-    })
+  dm: boolean
+) => {
+  return await client.automation.findUnique({
+    where: {
+      id: automationId,
+    },
 
-    // Create chat history record to be stored in the database
-    return {
-      automationId,
-      reciever: recipientId,
-      senderId,
-      message
-    }
-  } catch (error) {
-    console.error('Error in createChatHistory:', error)
-    throw error
-  }
-}
-
-export async function getChatHistory(recipientId: string, senderId: string) {
-  try {
-    console.log('Getting chat history for:', { recipientId, senderId })
-
-    // Retrieve chat history from the database
-    const messages = await client.dms.findMany({
-      where: {
-        OR: [
-          { reciever: recipientId, senderId },
-          { reciever: senderId, senderId: recipientId }
-        ]
+    include: {
+      dms: dm,
+      trigger: {
+        where: {
+          type: dm ? 'DM' : 'COMMENT',
+        },
       },
-      orderBy: {
-        createdAt: 'asc'
+      listener: true,
+      User: {
+        select: {
+          subscription: {
+            select: {
+              plan: true,
+            },
+          },
+          integrations: {
+            select: {
+              token: true,
+            },
+          },
+        },
       },
-      take: 10
-    })
-
-    // Transform messages into OpenAI format
-    const history = messages.map(msg => ({
-      role: msg.senderId === recipientId ? 'assistant' : 'user',
-      content: msg.message || ''
-    }))
-
-    return {
-      automationId: messages[0]?.automationId || null,
-      history
-    }
-  } catch (error) {
-    console.error('Error in getChatHistory:', error)
-    return {
-      automationId: null,
-      history: []
-    }
-  }
+    },
+  })
 }
-
-export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT') {
-  try {
-    console.log(`Tracking ${type} response for automation: ${automationId}`)
-    
-    // Update response tracking (DM or COMMENT count)
+export const trackResponses = async (
+  automationId: string,
+  type: 'COMMENT' | 'DM'
+) => {
+  if (type === 'COMMENT') {
     return await client.listener.update({
-      where: {
-        automationId
-      },
+      where: { automationId },
       data: {
-        dmCount: type === 'DM' ? { increment: 1 } : undefined,
-        commentCount: type === 'COMMENT' ? { increment: 1 } : undefined
-      }
+        commentCount: {
+          increment: 1,
+        },
+      },
     })
-  } catch (error) {
-    console.error('Error in trackResponses:', error)
-    return null
+  }
+
+  if (type === 'DM') {
+    return await client.listener.update({
+      where: { automationId },
+      data: {
+        dmCount: {
+          increment: 1,
+        },
+      },
+    })
   }
 }
 
-export async function getKeywordPost(mediaId: string, automationId: string) {
-  try {
-    console.log(`Getting post for media: ${mediaId}, automation: ${automationId}`)
-    
-    // Fetch post data related to a given mediaId and automationId
-    return await client.post.findFirst({
-      where: {
-        postid: mediaId,
-        automationId
-      }
-    })
-  } catch (error) {
-    console.error('Error in getKeywordPost:', error)
-    return null
-  }
+export const createChatHistory = (
+  automationId: string,
+  sender: string,
+  reciever: string,
+  message: string
+) => {
+  return client.automation.update({
+    where: {
+      id: automationId,
+    },
+    data: {
+      dms: {
+        create: {
+          reciever,
+          senderId: sender,
+          message,
+        },
+      },
+    },
+  })
 }
 
-// Utility function to validate Instagram token
-export async function validateToken(token: string): Promise<boolean> {
-  try {
-    const currentTime = new Date()
-    const tokenData = await client.integrations.findFirst({
-      where: {
-        token
-      }
-    })
+export const getKeywordPost = async (postId: string, automationId: string) => {
+  return await client.post.findFirst({
+    where: {
+      AND: [{ postid: postId }, { automationId }],
+    },
+    select: { automationId: true },
+  })
+}
 
-    // Check if the token exists and if it's expired
-    if (!tokenData || (tokenData.expiresAt && new Date(tokenData.expiresAt) < currentTime)) {
-      console.log('[Webhook Debug] Token validation failed:', {
-        hasToken: !!tokenData,
-        isExpired: tokenData?.expiresAt ? new Date(tokenData.expiresAt) < currentTime : false
-      })
-      return false
+export const getChatHistory = async (sender: string, reciever: string) => {
+  const history = await client.dms.findMany({
+    where: {
+      AND: [{ senderId: sender }, { reciever }],
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const chatSession: {
+    role: 'assistant' | 'user'
+    content: string
+  }[] = history.map((chat) => {
+    return {
+      role: chat.reciever ? 'assistant' : 'user',
+      content: chat.message!,
     }
+  })
 
-    return true
-  } catch (error) {
-    console.error('[Webhook Debug] Error validating token:', error)
-    return false
+  return {
+    history: chatSession,
+    automationId: history[history.length - 1].automationId,
   }
 }
