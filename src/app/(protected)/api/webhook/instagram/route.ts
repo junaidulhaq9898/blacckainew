@@ -1,5 +1,14 @@
 // app/api/webhook/instagram/route.ts
-import { createChatHistory, getChatHistory, getKeywordAutomation, matchKeyword, trackResponses } from '@/actions/webhook/queries'
+
+import { findAutomation } from '@/actions/automations/queries'
+import {
+  createChatHistory,
+  getChatHistory,
+  getKeywordAutomation,
+  getKeywordPost,
+  matchKeyword,
+  trackResponses,
+} from '@/actions/webhook/queries'
 import { sendDM, sendPrivateMessage } from '@/lib/fetch'
 import { openai } from '@/lib/openai'
 import { client } from '@/lib/prisma'
@@ -73,6 +82,70 @@ export async function POST(req: NextRequest) {
               console.error("Error sending DM:", error)
               return NextResponse.json(
                 { message: 'Error sending message' },
+                { status: 500 }
+              )
+            }
+          }
+
+          // Handle SMARTAI listener
+          if (
+            automation.listener?.listener === 'SMARTAI' &&
+            automation.User?.subscription?.plan === 'PRO'
+          ) {
+            try {
+              const smart_ai_message = await openai.chat.completions.create({
+                model: 'gpt-4',
+                messages: [
+                  {
+                    role: 'system',
+                    content: `${automation.listener?.prompt}: Keep responses under 2 sentences`
+                  },
+                  {
+                    role: 'user',
+                    content: messageText
+                  }
+                ]
+              })
+
+              if (smart_ai_message.choices[0].message.content) {
+                const reciever = await createChatHistory(
+                  automation.id,
+                  entry.id,
+                  messaging.sender.id,
+                  messageText
+                )
+
+                const sender = await createChatHistory(
+                  automation.id,
+                  entry.id,
+                  messaging.sender.id,
+                  smart_ai_message.choices[0].message.content
+                )
+
+                await client.$transaction([
+                  client.dms.create({ data: reciever }),
+                  client.dms.create({ data: sender })
+                ])
+
+                const direct_message = await sendDM(
+                  entry.id,
+                  messaging.sender.id,
+                  smart_ai_message.choices[0].message.content,
+                  automation.User.integrations[0].token
+                )
+
+                if (direct_message.status === 200) {
+                  await trackResponses(automation.id, 'DM')
+                  return NextResponse.json(
+                    { message: 'AI response sent' },
+                    { status: 200 }
+                  )
+                }
+              }
+            } catch (error) {
+              console.error("Error processing AI response:", error)
+              return NextResponse.json(
+                { message: 'Error processing AI response' },
                 { status: 500 }
               )
             }
