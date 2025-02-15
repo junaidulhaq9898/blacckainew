@@ -13,14 +13,23 @@ import { sendDM, sendPrivateMessage } from '@/lib/fetch'
 import { openai } from '@/lib/openai'
 import { client } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
+import { AxiosError } from 'axios'
 
-// Webhook verification endpoint
+// Type definitions
+interface InstagramError {
+  response?: {
+    status: number;
+    data: any;
+    headers: any;
+  };
+  message: string;
+}
+
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge')
   return new NextResponse(hub)
 }
 
-// Main webhook handler
 export async function POST(req: NextRequest) {
   try {
     const webhook_payload = await req.json()
@@ -38,16 +47,21 @@ export async function POST(req: NextRequest) {
     if (entry.messaging && Array.isArray(entry.messaging)) {
       const messaging = entry.messaging[0]
       
-      // Skip if it's just a read receipt
-      if (messaging.read && !messaging.message) {
-        console.log("Skipping read receipt")
-        return NextResponse.json({ message: 'Read receipt processed' }, { status: 200 })
+      // Skip echo messages and read receipts
+      if (messaging.message?.is_echo || messaging.read) {
+        console.log("Skipping echo or read receipt")
+        return NextResponse.json({ message: 'Echo/read receipt skipped' }, { status: 200 })
       }
 
       // Process actual message
       if (messaging.message?.text) {
         const messageText = messaging.message.text
         console.log("Processing message:", messageText)
+
+        const senderId = messaging.sender.id
+        const recipientId = messaging.recipient.id
+
+        console.log("Sender ID:", senderId, "Recipient ID:", recipientId)
 
         matcher = await matchKeyword(messageText)
         console.log("Keyword match result:", matcher)
@@ -68,8 +82,8 @@ export async function POST(req: NextRequest) {
           if (automation.listener?.listener === 'MESSAGE') {
             try {
               const direct_message = await sendDM(
-                entry.id,
-                messaging.sender.id,
+                recipientId,
+                senderId,
                 automation.listener.prompt,
                 automation.User.integrations[0].token
               )
@@ -78,10 +92,19 @@ export async function POST(req: NextRequest) {
                 await trackResponses(automation.id, 'DM')
                 return NextResponse.json({ message: 'Message sent' }, { status: 200 })
               }
-            } catch (error) {
+            } catch (err) {
+              const error = err as AxiosError
               console.error("Error sending DM:", error)
+              
+              if (error.response) {
+                console.error("Error Response:", {
+                  status: error.response.status,
+                  data: error.response.data,
+                  headers: error.response.headers
+                })
+              }
               return NextResponse.json(
-                { message: 'Error sending message' },
+                { message: 'Error sending message', error: error?.message || 'Unknown error' },
                 { status: 500 }
               )
             }
@@ -110,15 +133,15 @@ export async function POST(req: NextRequest) {
               if (smart_ai_message.choices[0].message.content) {
                 const reciever = await createChatHistory(
                   automation.id,
-                  entry.id,
-                  messaging.sender.id,
+                  recipientId,
+                  senderId,
                   messageText
                 )
 
                 const sender = await createChatHistory(
                   automation.id,
-                  entry.id,
-                  messaging.sender.id,
+                  recipientId,
+                  senderId,
                   smart_ai_message.choices[0].message.content
                 )
 
@@ -128,8 +151,8 @@ export async function POST(req: NextRequest) {
                 ])
 
                 const direct_message = await sendDM(
-                  entry.id,
-                  messaging.sender.id,
+                  recipientId,
+                  senderId,
                   smart_ai_message.choices[0].message.content,
                   automation.User.integrations[0].token
                 )
@@ -142,10 +165,11 @@ export async function POST(req: NextRequest) {
                   )
                 }
               }
-            } catch (error) {
+            } catch (err) {
+              const error = err as Error
               console.error("Error processing AI response:", error)
               return NextResponse.json(
-                { message: 'Error processing AI response' },
+                { message: 'Error processing AI response', error: error?.message || 'Unknown error' },
                 { status: 500 }
               )
             }
@@ -155,10 +179,11 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ message: 'No automation set' }, { status: 200 })
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error
     console.error("Webhook Error:", error)
     return NextResponse.json(
-      { message: 'Error processing webhook' },
+      { message: 'Error processing webhook', error: error?.message || 'Unknown error' },
       { status: 500 }
     )
   }
