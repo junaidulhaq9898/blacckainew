@@ -1,11 +1,12 @@
 // actions/webhook/queries.ts
+
 import { client } from '@/lib/prisma'
 
-// Match keyword in the message text
 export async function matchKeyword(text: string) {
   try {
-    console.log('[Webhook Debug] Matching keyword for text:', text)
-    
+    console.log('Matching keyword for text:', text)
+
+    // Find active automations with associated keywords
     const automations = await client.automation.findMany({
       where: {
         active: true,
@@ -17,66 +18,47 @@ export async function matchKeyword(text: string) {
         keywords: true,
         User: {
           include: {
-            integrations: {
-              select: {
-                token: true,
-                expiresAt: true,
-                instagramId: true
-              }
-            }
+            integrations: true
           }
         }
       }
     })
 
-    console.log('[Webhook Debug] Found automations count:', automations.length)
-
+    // Loop through automations and match the keyword in the message text
     for (const automation of automations) {
+      // Verify integration token is valid
       const integration = automation.User?.integrations[0]
-      console.log('[Webhook Debug] Checking integration:', {
-        automationId: automation.id,
-        hasToken: !!integration?.token,
-        expiresAt: integration?.expiresAt,
-        instagramId: integration?.instagramId
-      })
-
       if (!integration?.token || 
           (integration.expiresAt && new Date(integration.expiresAt) < new Date())) {
-        console.log(`[Webhook Debug] Skipping automation ${automation.id} - invalid token or expired`)
+        console.log(`Skipping automation ${automation.id} - invalid token`)
         continue
       }
 
+      // Match the message text with keywords
       for (const keyword of automation.keywords) {
-        console.log('[Webhook Debug] Checking keyword:', {
-          keyword: keyword.word,
-          against: text,
-          automationId: automation.id
-        })
-
         if (text.toLowerCase().includes(keyword.word.toLowerCase())) {
-          console.log(`[Webhook Debug] Matched keyword: "${keyword.word}" for automation: ${automation.id}`)
+          console.log(`Matched keyword: ${keyword.word} for automation: ${automation.id}`)
           return {
             automationId: automation.id,
-            keyword: keyword.word,
-            instagramId: integration.instagramId
+            keyword: keyword.word
           }
         }
       }
     }
 
-    console.log('[Webhook Debug] No keyword match found')
+    console.log('No keyword match found')
     return null
   } catch (error) {
-    console.error('[Webhook Debug] Error in matchKeyword:', error)
+    console.error('Error in matchKeyword:', error)
     return null
   }
 }
 
-// Get the keyword automation based on automationId
 export async function getKeywordAutomation(id: string, includeToken: boolean) {
   try {
-    console.log(`[Webhook Debug] Getting automation: ${id}, includeToken: ${includeToken}`)
+    console.log(`Getting automation: ${id}, includeToken: ${includeToken}`)
     
+    // Fetch automation details from the database
     const automation = await client.automation.findUnique({
       where: {
         id,
@@ -89,38 +71,25 @@ export async function getKeywordAutomation(id: string, includeToken: boolean) {
         User: {
           include: {
             subscription: true,
-            integrations: includeToken ? {
-              select: {
-                token: true,
-                expiresAt: true,
-                instagramId: true
-              }
-            } : false
+            integrations: includeToken
           }
         }
       }
     })
 
+    // Return null if no automation found
     if (!automation) {
-      console.log(`[Webhook Debug] No automation found for id: ${id}`)
+      console.log(`No automation found for id: ${id}`)
       return null
     }
 
-    console.log('[Webhook Debug] Found automation:', {
-      id: automation.id,
-      hasListener: !!automation.listener,
-      hasTriggers: automation.trigger.length > 0,
-      hasToken: !!automation.User?.integrations?.[0]?.token
-    })
-
     return automation
   } catch (error) {
-    console.error('[Webhook Debug] Error in getKeywordAutomation:', error)
+    console.error('Error in getKeywordAutomation:', error)
     return null
   }
 }
 
-// Create chat history entry (for AI responses or user messages)
 export async function createChatHistory(
   automationId: string,
   recipientId: string,
@@ -128,13 +97,14 @@ export async function createChatHistory(
   message: string
 ) {
   try {
-    console.log('[Webhook Debug] Creating chat history:', {
+    console.log('Creating chat history:', {
       automationId,
       recipientId,
       senderId,
       messageLength: message.length
     })
 
+    // Create chat history record to be stored in the database
     return {
       automationId,
       reciever: recipientId,
@@ -142,17 +112,54 @@ export async function createChatHistory(
       message
     }
   } catch (error) {
-    console.error('[Webhook Debug] Error in createChatHistory:', error)
+    console.error('Error in createChatHistory:', error)
     throw error
   }
 }
 
-// Track the responses (for DM or comment actions)
+export async function getChatHistory(recipientId: string, senderId: string) {
+  try {
+    console.log('Getting chat history for:', { recipientId, senderId })
+
+    // Retrieve chat history from the database
+    const messages = await client.dms.findMany({
+      where: {
+        OR: [
+          { reciever: recipientId, senderId },
+          { reciever: senderId, senderId: recipientId }
+        ]
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      take: 10
+    })
+
+    // Transform messages into OpenAI format
+    const history = messages.map(msg => ({
+      role: msg.senderId === recipientId ? 'assistant' : 'user',
+      content: msg.message || ''
+    }))
+
+    return {
+      automationId: messages[0]?.automationId || null,
+      history
+    }
+  } catch (error) {
+    console.error('Error in getChatHistory:', error)
+    return {
+      automationId: null,
+      history: []
+    }
+  }
+}
+
 export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT') {
   try {
-    console.log(`[Webhook Debug] Tracking ${type} response for automation: ${automationId}`)
+    console.log(`Tracking ${type} response for automation: ${automationId}`)
     
-    const result = await client.listener.update({
+    // Update response tracking (DM or COMMENT count)
+    return await client.listener.update({
       where: {
         automationId
       },
@@ -161,17 +168,51 @@ export async function trackResponses(automationId: string, type: 'DM' | 'COMMENT
         commentCount: type === 'COMMENT' ? { increment: 1 } : undefined
       }
     })
+  } catch (error) {
+    console.error('Error in trackResponses:', error)
+    return null
+  }
+}
 
-    console.log('[Webhook Debug] Response tracked:', {
-      automationId,
-      type,
-      newDmCount: result.dmCount,
-      newCommentCount: result.commentCount
+export async function getKeywordPost(mediaId: string, automationId: string) {
+  try {
+    console.log(`Getting post for media: ${mediaId}, automation: ${automationId}`)
+    
+    // Fetch post data related to a given mediaId and automationId
+    return await client.post.findFirst({
+      where: {
+        postid: mediaId,
+        automationId
+      }
+    })
+  } catch (error) {
+    console.error('Error in getKeywordPost:', error)
+    return null
+  }
+}
+
+// Utility function to validate Instagram token
+export async function validateToken(token: string): Promise<boolean> {
+  try {
+    const currentTime = new Date()
+    const tokenData = await client.integrations.findFirst({
+      where: {
+        token
+      }
     })
 
-    return result
+    // Check if the token exists and if it's expired
+    if (!tokenData || (tokenData.expiresAt && new Date(tokenData.expiresAt) < currentTime)) {
+      console.log('[Webhook Debug] Token validation failed:', {
+        hasToken: !!tokenData,
+        isExpired: tokenData?.expiresAt ? new Date(tokenData.expiresAt) < currentTime : false
+      })
+      return false
+    }
+
+    return true
   } catch (error) {
-    console.error('[Webhook Debug] Error in trackResponses:', error)
-    return null
+    console.error('[Webhook Debug] Error validating token:', error)
+    return false
   }
 }
