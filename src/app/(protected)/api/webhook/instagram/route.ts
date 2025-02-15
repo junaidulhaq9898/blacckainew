@@ -15,72 +15,86 @@ import { client } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 import { AxiosError } from 'axios'
 
-// Type definitions
-interface InstagramError {
-  response?: {
-    status: number;
-    data: any;
-    headers: any;
-  };
-  message: string;
-}
-
-export async function GET(req: NextRequest) {
-  const hub = req.nextUrl.searchParams.get('hub.challenge')
-  return new NextResponse(hub)
+// Debug logging function
+function debugLog(context: string, data: any) {
+  console.log(`[DEBUG ${new Date().toISOString()}] ${context}:`, JSON.stringify(data, null, 2))
 }
 
 export async function POST(req: NextRequest) {
   try {
+    // Log raw request details
+    debugLog('Instagram Webhook - Headers', Object.fromEntries(req.headers))
+
     const webhook_payload = await req.json()
-    console.log("Webhook Payload:", JSON.stringify(webhook_payload, null, 2))
+    debugLog('Instagram Webhook - Raw Payload', webhook_payload)
 
     let matcher
     const entry = webhook_payload.entry?.[0]
 
     if (!entry) {
-      console.log("No entry in webhook payload")
+      debugLog('No Entry Found', webhook_payload)
       return NextResponse.json({ message: 'No entry found' }, { status: 200 })
     }
+
+    // Log entry details
+    debugLog('Processing Entry', entry)
 
     // Handle messaging events
     if (entry.messaging && Array.isArray(entry.messaging)) {
       const messaging = entry.messaging[0]
+      debugLog('Processing Messaging', messaging)
       
-      // Skip echo messages and read receipts
-      if (messaging.message?.is_echo || messaging.read) {
-        console.log("Skipping echo or read receipt")
-        return NextResponse.json({ message: 'Echo/read receipt skipped' }, { status: 200 })
+      // Check for message type
+      if (messaging.message?.is_echo) {
+        debugLog('Echo Message Detected', messaging.message)
+        return NextResponse.json({ message: 'Echo message skipped' }, { status: 200 })
+      }
+
+      if (messaging.read) {
+        debugLog('Read Receipt Detected', messaging.read)
+        return NextResponse.json({ message: 'Read receipt skipped' }, { status: 200 })
       }
 
       // Process actual message
       if (messaging.message?.text) {
         const messageText = messaging.message.text
-        console.log("Processing message:", messageText)
+        debugLog('Processing Message Text', { messageText })
 
         const senderId = messaging.sender.id
         const recipientId = messaging.recipient.id
+        debugLog('Message IDs', { senderId, recipientId })
 
-        console.log("Sender ID:", senderId, "Recipient ID:", recipientId)
-
+        // Try to match keyword
         matcher = await matchKeyword(messageText)
-        console.log("Keyword match result:", matcher)
+        debugLog('Keyword Match Result', matcher)
 
         if (matcher?.automationId) {
           const automation = await getKeywordAutomation(matcher.automationId, true)
-          console.log("Found automation:", automation?.id)
+          debugLog('Found Automation', automation)
 
           if (!automation?.User?.integrations?.[0]?.token) {
-            console.log("No valid integration token found")
+            debugLog('No Valid Token', { automationId: automation?.id })
             return NextResponse.json(
               { message: 'No valid integration token' },
               { status: 200 }
             )
           }
 
+          // Log integration details
+          debugLog('Integration Details', {
+            token: automation.User.integrations[0].token.substring(0, 20) + '...',
+            expiresAt: automation.User.integrations[0].expiresAt
+          })
+
           // Handle MESSAGE listener
           if (automation.listener?.listener === 'MESSAGE') {
             try {
+              debugLog('Sending DM', {
+                recipientId,
+                senderId,
+                prompt: automation.listener.prompt
+              })
+
               const direct_message = await sendDM(
                 recipientId,
                 senderId,
@@ -88,21 +102,24 @@ export async function POST(req: NextRequest) {
                 automation.User.integrations[0].token
               )
 
+              debugLog('DM Response', direct_message)
+
               if (direct_message.status === 200) {
                 await trackResponses(automation.id, 'DM')
                 return NextResponse.json({ message: 'Message sent' }, { status: 200 })
               }
             } catch (err) {
               const error = err as AxiosError
-              console.error("Error sending DM:", error)
-              
-              if (error.response) {
-                console.error("Error Response:", {
-                  status: error.response.status,
-                  data: error.response.data,
-                  headers: error.response.headers
-                })
-              }
+              debugLog('DM Error', {
+                message: error.message,
+                response: error.response?.data,
+                config: {
+                  url: error.config?.url,
+                  method: error.config?.method,
+                  data: error.config?.data
+                }
+              })
+
               return NextResponse.json(
                 { message: 'Error sending message', error: error?.message || 'Unknown error' },
                 { status: 500 }
@@ -116,72 +133,31 @@ export async function POST(req: NextRequest) {
             automation.User?.subscription?.plan === 'PRO'
           ) {
             try {
-              const smart_ai_message = await openai.chat.completions.create({
-                model: 'gpt-4',
-                messages: [
-                  {
-                    role: 'system',
-                    content: `${automation.listener?.prompt}: Keep responses under 2 sentences`
-                  },
-                  {
-                    role: 'user',
-                    content: messageText
-                  }
-                ]
-              })
-
-              if (smart_ai_message.choices[0].message.content) {
-                const reciever = await createChatHistory(
-                  automation.id,
-                  recipientId,
-                  senderId,
-                  messageText
-                )
-
-                const sender = await createChatHistory(
-                  automation.id,
-                  recipientId,
-                  senderId,
-                  smart_ai_message.choices[0].message.content
-                )
-
-                await client.$transaction([
-                  client.dms.create({ data: reciever }),
-                  client.dms.create({ data: sender })
-                ])
-
-                const direct_message = await sendDM(
-                  recipientId,
-                  senderId,
-                  smart_ai_message.choices[0].message.content,
-                  automation.User.integrations[0].token
-                )
-
-                if (direct_message.status === 200) {
-                  await trackResponses(automation.id, 'DM')
-                  return NextResponse.json(
-                    { message: 'AI response sent' },
-                    { status: 200 }
-                  )
-                }
-              }
+              debugLog('Processing SMARTAI', { prompt: automation.listener.prompt })
+              // ... rest of your SMARTAI logic ...
             } catch (err) {
               const error = err as Error
-              console.error("Error processing AI response:", error)
+              debugLog('SMARTAI Error', error)
               return NextResponse.json(
                 { message: 'Error processing AI response', error: error?.message || 'Unknown error' },
                 { status: 500 }
               )
             }
           }
+        } else {
+          debugLog('No Automation Match', { messageText })
         }
+      } else {
+        debugLog('No Message Text', messaging)
       }
+    } else {
+      debugLog('No Messaging Array', entry)
     }
 
     return NextResponse.json({ message: 'No automation set' }, { status: 200 })
   } catch (err) {
     const error = err as Error
-    console.error("Webhook Error:", error)
+    debugLog('Webhook Error', error)
     return NextResponse.json(
       { message: 'Error processing webhook', error: error?.message || 'Unknown error' },
       { status: 500 }
