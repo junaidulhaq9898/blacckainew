@@ -1,6 +1,9 @@
+// components/automation/trigger/index.tsx
+
 'use client'
+
 import { useQueryAutomation } from '@/hooks/user-queries'
-import React from 'react'
+import React, { useEffect } from 'react'
 import ActiveTrigger from './active'
 import { Separator } from '@/components/ui/separator'
 import ThenAction from '../then/then-action'
@@ -18,8 +21,26 @@ type Props = {
 
 const Trigger = ({ id }: Props) => {
   const { types, onSetTrigger, onSaveTrigger, isPending } = useTriggers(id)
-  const { data } = useQueryAutomation(id)
+  const { data, isLoading } = useQueryAutomation(id)
 
+  // Debug logging for automation state
+  useEffect(() => {
+    if (data?.data) {
+      console.log('Automation State:', {
+        id,
+        triggers: data.data.trigger,
+        keywords: data.data.keywords,
+        isActive: data.data.active,
+        hasListener: !!data.data.listener
+      })
+    }
+  }, [data, id])
+
+  if (isLoading) {
+    return <div>Loading automation settings...</div>
+  }
+
+  // If automation exists and has triggers
   if (data?.data && data?.data?.trigger.length > 0) {
     return (
       <div className="flex flex-col ga-y-6 items-center">
@@ -31,7 +52,7 @@ const Trigger = ({ id }: Props) => {
         {data?.data?.trigger.length > 1 && (
           <>
             <div className="relative w-6/12 my-4">
-              <p className="absolute transform  px-2 -translate-y-1/2 top-1/2 -translate-x-1/2 left-1/2">
+              <p className="absolute transform px-2 -translate-y-1/2 top-1/2 -translate-x-1/2 left-1/2">
                 or
               </p>
               <Separator
@@ -46,10 +67,18 @@ const Trigger = ({ id }: Props) => {
           </>
         )}
 
-        {!data.data.listener && <ThenAction id={id} />}
+        {!data.data.listener && (
+          <>
+            <div className="w-full mt-4">
+              <ThenAction id={id} />
+            </div>
+          </>
+        )}
       </div>
     )
   }
+
+  // Initial trigger setup
   return (
     <TriggerButton label="Add Trigger">
       <div className="flex flex-col gap-y-2">
@@ -71,11 +100,17 @@ const Trigger = ({ id }: Props) => {
             <p className="text-sm font-light">{trigger.description}</p>
           </div>
         ))}
-        <Keywords id={id} />
+
+        {/* Keywords section */}
+        <div className="mt-4">
+          <Keywords id={id} />
+        </div>
+
+        {/* Save trigger button */}
         <Button
           onClick={onSaveTrigger}
           disabled={types?.length === 0}
-          className="bg-gradient-to-br from-[#3352CC] font-medium text-white to-[#1C2D70]"
+          className="bg-gradient-to-br from-[#3352CC] font-medium text-white to-[#1C2D70] mt-4"
         >
           <Loader state={isPending}>Create Trigger</Loader>
         </Button>
