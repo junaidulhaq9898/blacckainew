@@ -1,220 +1,93 @@
-'use server'
+import axios from 'axios'
 
-const INSTAGRAM_BASE_URL = process.env.INSTAGRAM_BASE_URL;
-const APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
-const APP_ID = process.env.INSTAGRAM_APP_ID;
+export const refreshToken = async (token: string) => {
+  const refresh_token = await axios.get(
+    `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
+  )
 
-interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
+  return refresh_token.data
 }
 
-interface InstagramError {
-  error: {
-    message: string;
-    type: string;
-    code: number;
-    fbtrace_id: string;
-  }
-}
-
-// Generate tokens from auth code
-export const generateTokens = async (code: string): Promise<TokenResponse> => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/oauth/access_token`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: APP_ID!,
-          client_secret: APP_SECRET!,
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/integrations`,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error: any) {
-    console.error('Token generation error:', error);
-    throw new Error(error.message || 'Failed to generate token');
-  }
-};
-
-// Refresh an existing token
-export const refreshToken = async (token: string): Promise<TokenResponse> => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/refresh_access_token`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'fb_exchange_token',
-          client_id: APP_ID!,
-          client_secret: APP_SECRET!,
-          fb_exchange_token: token,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error: any) {
-    console.error('Token refresh error:', error);
-    throw new Error(error.message || 'Failed to refresh token');
-  }
-};
-
-// Send Direct Message
 export const sendDM = async (
-  recipientId: string,
-  senderId: string,
-  message: string,
+  userId: string,
+  recieverId: string,
+  prompt: string,
   token: string
 ) => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/${recipientId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          recipient: { id: senderId },
-          message: { text: message },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
+  console.log('sending message')
+  return await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/messages`,
+    {
+      recipient: {
+        id: recieverId,
+      },
+      message: {
+        text: prompt,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     }
+  )
+}
 
-    return {
-      status: response.status,
-      data: await response.json(),
-    };
-  } catch (error: any) {
-    console.error('Send DM error:', error);
-    throw new Error(error.message || 'Failed to send message');
-  }
-};
-
-// Get Instagram Media
-export const getMedia = async (token: string) => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/me/media?fields=id,caption,media_url,media_type,timestamp&limit=25`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    console.error('Get media error:', error);
-    throw new Error(error.message || 'Failed to fetch media');
-  }
-};
-
-// Reply to a comment
-export const replyToComment = async (
-  commentId: string,
-  message: string,
+export const sendPrivateMessage = async (
+  userId: string,
+  recieverId: string,
+  prompt: string,
   token: string
 ) => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/${commentId}/replies`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
+  console.log('sending message')
+  return await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/${userId}/messages`,
+    {
+      recipient: {
+        comment_id: recieverId,
+      },
+      message: {
+        text: prompt,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     }
+  )
+}
 
-    return {
-      status: response.status,
-      data: await response.json(),
-    };
-  } catch (error: any) {
-    console.error('Reply to comment error:', error);
-    throw new Error(error.message || 'Failed to reply to comment');
+
+export const generateTokens = async (code: string) => {
+  const insta_form = new FormData()
+  insta_form.append('client_id', process.env.INSTAGRAM_CLIENT_ID as string)
+
+  insta_form.append(
+    'client_secret',
+    process.env.INSTAGRAM_CLIENT_SECRET as string
+  )
+  insta_form.append('grant_type', 'authorization_code')
+  insta_form.append(
+    'redirect_uri',
+    `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`
+  )
+  insta_form.append('code', code)
+
+  const shortTokenRes = await fetch(process.env.INSTAGRAM_TOKEN_URL as string, {
+    method: 'POST',
+    body: insta_form,
+  })
+
+  const token = await shortTokenRes.json()
+  if (token.permissions.length > 0) {
+    console.log(token, 'got permissions')
+    const long_token = await axios.get(
+      `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}&access_token=${token.access_token}`
+    )
+
+    return long_token.data
   }
-};
-
-// Validate Instagram token
-export const validateToken = async (token: string): Promise<boolean> => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/me?access_token=${token}`
-    );
-    return response.status === 200;
-  } catch (error) {
-    console.error('Token validation error:', error);
-    return false;
-  }
-};
-
-// Get account insights
-export const getInsights = async (token: string) => {
-  try {
-    const response = await fetch(
-      `${INSTAGRAM_BASE_URL}/me/insights?metric=impressions,reach,profile_views&period=day`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json() as InstagramError;
-      throw new Error(error.error.message);
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    console.error('Get insights error:', error);
-    throw new Error(error.message || 'Failed to fetch insights');
-  }
-};
+}
