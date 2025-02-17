@@ -1,323 +1,283 @@
+// src/app/(protected)/api/webhook/instagram/route.ts
 import { findAutomation } from '@/actions/automations/queries'
 import {
   createChatHistory,
   getChatHistory,
   getKeywordAutomation,
-  getKeywordPost,
   matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries'
-import { sendDM, sendPrivateMessage } from '@/lib/fetch'
+import { sendDM } from '@/lib/fetch'
 import { openai } from '@/lib/openai'
 import { client } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(req: NextRequest) {
-  const hub = req.nextUrl.searchParams.get('hub.challenge')
-  return new NextResponse(hub)
-}
+// Constants and Types
+const INSTAGRAM_ERROR_CODES = {
+  INVALID_TOKEN: 190,
+  PERMISSION_ERROR: 200,
+  RATE_LIMIT: 4,
+  INVALID_OAUTH: 463
+} as const;
+
+type InstagramWebhookPayload = {
+  entry?: Array<{
+    messaging?: Array<{
+      message?: {
+        text?: string;
+      };
+      sender?: {
+        id?: string;
+      };
+      read?: boolean;
+    }>;
+    changes?: any[];
+    id?: string;
+  }>;
+};
+
+// Rate limiting cache
+const rateLimitCache = new Map<string, number>();
+
+// Webhook validation
+const validateInstagramWebhook = async (payload: InstagramWebhookPayload, token: string): Promise<boolean> => {
+  try {
+    // Verify token validity
+    const response = await fetch(
+      `${process.env.INSTAGRAM_BASE_URL}/me?access_token=${token}`
+    );
+    
+    if (!response.ok) {
+      throw new Error('Invalid Instagram token');
+    }
+
+    // Validate payload structure
+    if (!payload.entry?.[0]) {
+      throw new Error('Invalid webhook structure');
+    }
+
+    const entry = payload.entry[0];
+    if (!entry.messaging?.[0]?.message?.text && !entry.changes) {
+      throw new Error('Invalid webhook content');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Webhook validation error:', error);
+    return false;
+  }
+};
+
+// Rate limiting implementation
+const checkRateLimit = (instagramId: string): boolean => {
+  const NOW = Date.now();
+  const WINDOW_SIZE = 60000; // 1 minute
+  const MAX_REQUESTS = 5;
+
+  const requests = rateLimitCache.get(instagramId) || 0;
+  
+  if (requests >= MAX_REQUESTS) {
+    return false;
+  }
+
+  rateLimitCache.set(instagramId, requests + 1);
+  setTimeout(() => {
+    const current = rateLimitCache.get(instagramId) || 0;
+    rateLimitCache.set(instagramId, Math.max(0, current - 1));
+  }, WINDOW_SIZE);
+
+  return true;
+};
 
 export async function POST(req: NextRequest) {
-  const webhook_payload = await req.json()
-  let matcher
   try {
-    if (webhook_payload.entry[0].messaging) {
-      matcher = await matchKeyword(
-        webhook_payload.entry[0].messaging[0].message.text
-      )
+    const webhookPayload: InstagramWebhookPayload = await req.json();
+    console.log("Webhook Payload:", JSON.stringify(webhookPayload, null, 2));
+
+    const entry = webhookPayload.entry?.[0];
+    if (!entry?.id) {
+      console.log("Invalid entry in webhook payload");
+      return NextResponse.json({ message: 'No entry found' }, { status: 200 });
     }
 
-    if (webhook_payload.entry[0].changes) {
-      matcher = await matchKeyword(
-        webhook_payload.entry[0].changes[0].value.text
-      )
+    const messaging = entry.messaging?.[0];
+    if (messaging?.read && !messaging?.message) {
+      console.log("Skipping read receipt");
+      return NextResponse.json({ message: 'Read receipt processed' }, { status: 200 });
     }
 
-    if (matcher && matcher.automationId) {
-      console.log('Matched')
-      // We have a keyword matcher
+    const messageText = messaging?.message?.text;
+    const senderId = messaging?.sender?.id;
 
-      if (webhook_payload.entry[0].messaging) {
-        const automation = await getKeywordAutomation(
-          matcher.automationId,
-          true
-        )
+    if (messageText && senderId) {
+      console.log("Processing message:", messageText);
 
-        if (automation && automation.trigger) {
-          if (
-            automation.listener &&
-            automation.listener.listener === 'MESSAGE'
-          ) {
-            const direct_message = await sendDM(
-              webhook_payload.entry[0].id,
-              webhook_payload.entry[0].messaging[0].sender.id,
-              automation.listener?.prompt,
-              automation.User?.integrations[0].token!
-            )
+      const matcher = await matchKeyword(messageText);
+      console.log("Keyword match result:", matcher);
 
-            if (direct_message.status === 200) {
-              const tracked = await trackResponses(automation.id, 'DM')
-              if (tracked) {
+      if (matcher?.automationId) {
+        const automation = await getKeywordAutomation(matcher.automationId, true);
+        
+        // Validate automation and user
+        const token = automation?.User?.integrations?.[0]?.token;
+        if (!token || !automation?.User) {
+          console.log("No valid integration token found");
+          return NextResponse.json(
+            { message: 'No valid integration token' },
+            { status: 200 }
+          );
+        }
+
+        // Rate limiting check
+        if (!checkRateLimit(entry.id)) {
+          console.log("Rate limit exceeded for Instagram ID:", entry.id);
+          return NextResponse.json(
+            { message: 'Rate limit exceeded' },
+            { status: 429 }
+          );
+        }
+
+        // Validate webhook payload
+        if (!(await validateInstagramWebhook(webhookPayload, token))) {
+          console.error("Invalid webhook or expired token");
+          return NextResponse.json(
+            { message: 'Invalid webhook or token' },
+            { status: 400 }
+          );
+        }
+
+        // Handle MESSAGE listener
+        if (automation.listener?.listener === 'MESSAGE') {
+          try {
+            const directMessage = await sendDM(
+              entry.id,
+              senderId,
+              automation.listener.prompt || '',
+              token
+            );
+
+            if (directMessage.status === 200) {
+              await trackResponses(automation.id, 'DM');
+              return NextResponse.json({ message: 'Message sent' }, { status: 200 });
+            }
+          } catch (error: any) {
+            console.error("Error sending DM:", error);
+            const errorCode = error.response?.data?.error?.code;
+            
+            switch (errorCode) {
+              case INSTAGRAM_ERROR_CODES.INVALID_TOKEN:
                 return NextResponse.json(
-                  {
-                    message: 'Message sent',
-                  },
-                  { status: 200 }
-                )
-              }
+                  { message: 'Token expired' },
+                  { status: 401 }
+                );
+              case INSTAGRAM_ERROR_CODES.PERMISSION_ERROR:
+                return NextResponse.json(
+                  { message: 'Permission denied' },
+                  { status: 403 }
+                );
+              case INSTAGRAM_ERROR_CODES.RATE_LIMIT:
+                return NextResponse.json(
+                  { message: 'Rate limit exceeded' },
+                  { status: 429 }
+                );
+              default:
+                return NextResponse.json(
+                  { message: 'Error sending message' },
+                  { status: 500 }
+                );
             }
           }
+        }
 
-          if (
-            automation.listener &&
-            automation.listener.listener === 'SMARTAI' &&
-            automation.User?.subscription?.plan === 'PRO'
-          ) {
-            const smart_ai_message = await openai.chat.completions.create({
-              model: 'gpt-4o',
+        // Handle SMARTAI listener
+        if (
+          automation.listener?.listener === 'SMARTAI' &&
+          automation.User.subscription?.plan === 'PRO'
+        ) {
+          try {
+            const aiResponse = await openai.chat.completions.create({
+              model: 'gpt-4',
               messages: [
                 {
-                  role: 'assistant',
-                  content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
+                  role: 'system',
+                  content: `${automation.listener.prompt || ''}: Keep responses under 2 sentences`
                 },
-              ],
-            })
-
-            if (smart_ai_message.choices[0].message.content) {
-              const reciever = createChatHistory(
-                automation.id,
-                webhook_payload.entry[0].id,
-                webhook_payload.entry[0].messaging[0].sender.id,
-                webhook_payload.entry[0].messaging[0].message.text
-              )
-
-              const sender = createChatHistory(
-                automation.id,
-                webhook_payload.entry[0].id,
-                webhook_payload.entry[0].messaging[0].sender.id,
-                smart_ai_message.choices[0].message.content
-              )
-
-              await client.$transaction([reciever, sender])
-
-              const direct_message = await sendDM(
-                webhook_payload.entry[0].id,
-                webhook_payload.entry[0].messaging[0].sender.id,
-                smart_ai_message.choices[0].message.content,
-                automation.User?.integrations[0].token!
-              )
-
-              if (direct_message.status === 200) {
-                const tracked = await trackResponses(automation.id, 'DM')
-                if (tracked) {
-                  return NextResponse.json(
-                    {
-                      message: 'Message sent',
-                    },
-                    { status: 200 }
-                  )
+                {
+                  role: 'user',
+                  content: messageText
                 }
-              }
-            }
-          }
-        }
-      }
+              ]
+            });
 
-      if (
-        webhook_payload.entry[0].changes &&
-        webhook_payload.entry[0].changes[0].field === 'comments'
-      ) {
-        const automation = await getKeywordAutomation(
-          matcher.automationId,
-          false
-        )
-
-        console.log('geting the automations')
-
-        const automations_post = await getKeywordPost(
-          webhook_payload.entry[0].changes[0].value.media.id,
-          automation?.id!
-        )
-
-        console.log('found keyword ', automations_post)
-
-        if (automation && automations_post && automation.trigger) {
-          console.log('first if')
-          if (automation.listener) {
-            console.log('first if')
-            if (automation.listener.listener === 'MESSAGE') {
-              console.log(
-                'SENDING DM, WEB HOOK PAYLOAD',
-                webhook_payload,
-                'changes',
-                webhook_payload.entry[0].changes[0].value.from
-              )
-
-              console.log(
-                'COMMENT VERSION:',
-                webhook_payload.entry[0].changes[0].value.from.id
-              )
-
-              const direct_message = await sendPrivateMessage(
-                webhook_payload.entry[0].id,
-                webhook_payload.entry[0].changes[0].value.id,
-                automation.listener?.prompt,
-                automation.User?.integrations[0].token!
-              )
-
-              console.log('DM SENT', direct_message.data)
-              if (direct_message.status === 200) {
-                const tracked = await trackResponses(automation.id, 'COMMENT')
-
-                if (tracked) {
-                  return NextResponse.json(
-                    {
-                      message: 'Message sent',
-                    },
-                    { status: 200 }
-                  )
-                }
-              }
-            }
-            if (
-              automation.listener.listener === 'SMARTAI' &&
-              automation.User?.subscription?.plan === 'PRO'
-            ) {
-              const smart_ai_message = await openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages: [
-                  {
-                    role: 'assistant',
-                    content: `${automation.listener?.prompt}: keep responses under 2 sentences`,
-                  },
-                ],
-              })
-              if (smart_ai_message.choices[0].message.content) {
-                const reciever = createChatHistory(
+            const aiContent = aiResponse.choices[0]?.message?.content;
+            if (aiContent) {
+              await client.$transaction(async (tx) => {
+                const receiverData = await createChatHistory(
                   automation.id,
-                  webhook_payload.entry[0].id,
-                  webhook_payload.entry[0].changes[0].value.from.id,
-                  webhook_payload.entry[0].changes[0].value.text
-                )
+                  entry.id!,
+                  senderId,
+                  messageText
+                );
 
-                const sender = createChatHistory(
+                const senderData = await createChatHistory(
                   automation.id,
-                  webhook_payload.entry[0].id,
-                  webhook_payload.entry[0].changes[0].value.from.id,
-                  smart_ai_message.choices[0].message.content
-                )
+                  entry.id!,
+                  senderId,
+                  aiContent
+                );
 
-                await client.$transaction([reciever, sender])
+                await tx.dms.create({ data: receiverData });
+                await tx.dms.create({ data: senderData });
 
-                const direct_message = await sendPrivateMessage(
-                  webhook_payload.entry[0].id,
-                  webhook_payload.entry[0].changes[0].value.id,
-                  automation.listener?.prompt,
-                  automation.User?.integrations[0].token!
-                )
+                const directMessage = await sendDM(
+                  entry.id!,
+                  senderId,
+                  aiContent,
+                  token
+                );
 
-                if (direct_message.status === 200) {
-                  const tracked = await trackResponses(automation.id, 'COMMENT')
-
-                  if (tracked) {
-                    return NextResponse.json(
-                      {
-                        message: 'Message sent',
-                      },
-                      { status: 200 }
-                    )
-                  }
+                if (directMessage.status === 200) {
+                  await trackResponses(automation.id, 'DM');
                 }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (!matcher) {
-      const customer_history = await getChatHistory(
-        webhook_payload.entry[0].messaging[0].recipient.id,
-        webhook_payload.entry[0].messaging[0].sender.id
-      )
-
-      if (customer_history.history.length > 0) {
-        const automation = await findAutomation(customer_history.automationId!)
-
-        if (
-          automation?.User?.subscription?.plan === 'PRO' &&
-          automation.listener?.listener === 'SMARTAI'
-        ) {
-          const smart_ai_message = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'assistant',
-                content: `${automation.listener?.prompt}: keep responses under 2 sentences`,
-              },
-              ...customer_history.history,
-              {
-                role: 'user',
-                content: webhook_payload.entry[0].messaging[0].message.text,
-              },
-            ],
-          })
-
-          if (smart_ai_message.choices[0].message.content) {
-            const reciever = createChatHistory(
-              automation.id,
-              webhook_payload.entry[0].id,
-              webhook_payload.entry[0].messaging[0].sender.id,
-              webhook_payload.entry[0].messaging[0].message.text
-            )
-
-            const sender = createChatHistory(
-              automation.id,
-              webhook_payload.entry[0].id,
-              webhook_payload.entry[0].messaging[0].sender.id,
-              smart_ai_message.choices[0].message.content
-            )
-            await client.$transaction([reciever, sender])
-            const direct_message = await sendDM(
-              webhook_payload.entry[0].id,
-              webhook_payload.entry[0].messaging[0].sender.id,
-              smart_ai_message.choices[0].message.content,
-              automation.User?.integrations[0].token!
-            )
-
-            if (direct_message.status === 200) {
-              //if successfully send we return
+              });
 
               return NextResponse.json(
-                {
-                  message: 'Message sent',
-                },
+                { message: 'AI response sent' },
                 { status: 200 }
-              )
+              );
             }
+          } catch (error: any) {
+            console.error("Error processing AI response:", error);
+            
+            if (error.response?.data?.error?.code === INSTAGRAM_ERROR_CODES.INVALID_TOKEN) {
+              return NextResponse.json(
+                { message: 'Token expired' },
+                { status: 401 }
+              );
+            }
+
+            return NextResponse.json(
+              { message: 'Error processing AI response' },
+              { status: 500 }
+            );
           }
         }
       }
-
-      return NextResponse.json(
-        {
-          message: 'No automation set',
-        },
-        { status: 200 }
-      )
     }
-    return NextResponse.json(
-      {
-        message: 'No automation set',
-      },
-      { status: 200 }
-    )
+
+    return NextResponse.json({ message: 'No automation set' }, { status: 200 });
   } catch (error) {
+    console.error("Webhook Error:", error);
     return NextResponse.json(
-      {
-        message: 'No automation set',
-      },
-      { status: 200 }
-    )
+      { message: 'Error processing webhook' },
+      { status: 500 }
+    );
   }
+}
+
+export async function GET(req: NextRequest) {
+  const hubChallenge = req.nextUrl.searchParams.get('hub.challenge');
+  return new NextResponse(hubChallenge || undefined, {
+    status: hubChallenge ? 200 : 400
+  });
 }

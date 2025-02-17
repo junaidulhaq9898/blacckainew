@@ -1,52 +1,215 @@
-// /src/actions/user/queries.ts
+'use server'
 import { client } from '@/lib/prisma'
-import type { User, Integrations, Subscription } from '@prisma/client'
+import { SUBSCRIPTION_PLAN } from '@prisma/client'
 
-/**
- * Finds a user by their Clerk ID and includes integrations and subscription.
- */
-export const findUser = async (
-  clerkId: string
-): Promise<
-  (User & { integrations: Integrations[]; subscription: Subscription | null }) | null
-> => {
-  return client.user.findUnique({
-    where: { clerkId },
-    include: { 
-      integrations: true,
-      subscription: true 
-    }
-  })
+interface SubscriptionUpdate {
+  customerId: string
+  plan: SUBSCRIPTION_PLAN
 }
 
-/**
- * Creates a new user.
- */
+// Helper to validate user data
+const validateUserData = (
+  clerkId: string,
+  firstName: string,
+  lastName: string,
+  email: string
+) => {
+  if (!clerkId) throw new Error('ClerkId is required')
+  if (!email) throw new Error('Email is required')
+  if (!firstName && !lastName) throw new Error('At least one name is required')
+  return true
+}
+
+// Helper to check integration status
+const getIntegrationStatus = async (userId: string) => {
+  const integration = await client.integrations.findFirst({
+    where: {
+      userId,
+      name: 'INSTAGRAM',
+      expiresAt: { gt: new Date() }
+    }
+  })
+  
+  return {
+    hasValidIntegration: !!integration,
+    integration
+  }
+}
+
 export const createUser = async (
   clerkId: string,
   firstName: string,
   lastName: string,
   email: string
 ) => {
-  return client.user.create({
-    data: {
-      clerkId,
-      firstname: firstName,
-      lastname: lastName,
-      email,
-    }
-  })
+  try {
+    validateUserData(clerkId, firstName, lastName, email)
+
+    return await client.user.create({
+      data: {
+        clerkId,
+        email,
+        firstname: firstName,
+        lastname: lastName,
+        subscription: {
+          create: { plan: 'FREE' }
+        }
+      },
+      include: {
+        subscription: true,
+        integrations: true
+      }
+    })
+  } catch (error) {
+    console.error('Create user error:', error)
+    throw error
+  }
 }
 
-/**
- * Updates the user's subscription.
- */
+export const findUser = async (clerkId: string) => {
+  try {
+    const user = await client.user.findUnique({
+      where: { clerkId },
+      include: {
+        subscription: true,
+        integrations: { orderBy: { createdAt: 'desc' } },
+        automations: {
+          include: {
+            keywords: true,
+            trigger: true,
+            listener: true
+          }
+        }
+      }
+    })
+
+    if (!user) return null
+
+    const { hasValidIntegration, integration } = await getIntegrationStatus(user.id)
+
+    return {
+      ...user,
+      integrationStatus: {
+        hasValidIntegration,
+        integrationId: integration?.id,
+        expiresAt: integration?.expiresAt,
+        needsRefresh: integration?.expiresAt ? 
+          (integration.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24) <= 5 : 
+          false
+      }
+    }
+  } catch (error) {
+    console.error('Find user error:', error)
+    throw error
+  }
+}
+
 export const updateSubscription = async (
   userId: string,
-  data: { customerId: string; plan: 'PRO' | 'FREE' }
+  data: SubscriptionUpdate
 ) => {
-  return client.subscription.update({
-    where: { userId },
-    data
-  })
+  try {
+    return await client.subscription.upsert({
+      where: { userId },
+      create: {
+        userId,
+        customerId: data.customerId,
+        plan: data.plan
+      },
+      update: {
+        customerId: data.customerId,
+        plan: data.plan
+      }
+    })
+  } catch (error) {
+    console.error('Update subscription error:', error)
+    throw error
+  }
+}
+
+export const getUserAutomations = async (userId: string) => {
+  try {
+    const { hasValidIntegration } = await getIntegrationStatus(userId)
+    
+    if (!hasValidIntegration) {
+      throw new Error('Valid Instagram integration required')
+    }
+
+    return await client.automation.findMany({
+      where: { userId },
+      include: {
+        keywords: true,
+        trigger: true,
+        listener: true,
+        posts: true
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+  } catch (error) {
+    console.error('Get user automations error:', error)
+    throw error
+  }
+}
+
+export const updateUserProfile = async (
+  userId: string,
+  data: { firstName?: string; lastName?: string; email?: string }
+) => {
+  try {
+    return await client.user.update({
+      where: { id: userId },
+      data: {
+        firstname: data.firstName,
+        lastname: data.lastName,
+        email: data.email
+      }
+    })
+  } catch (error) {
+    console.error('Update user profile error:', error)
+    throw error
+  }
+}
+
+export const getUserStats = async (userId: string) => {
+  try {
+    const { hasValidIntegration } = await getIntegrationStatus(userId)
+    
+    if (!hasValidIntegration) {
+      throw new Error('Valid Instagram integration required')
+    }
+
+    const [automations, keywords, posts] = await client.$transaction([
+      client.automation.count({ where: { userId } }),
+      client.keyword.count({
+        where: { Automation: { userId } }
+      }),
+      client.post.count({
+        where: { Automation: { userId } }
+      })
+    ])
+
+    return {
+      totalAutomations: automations,
+      totalKeywords: keywords,
+      totalPosts: posts
+    }
+  } catch (error) {
+    console.error('Get user stats error:', error)
+    throw error
+  }
+}
+
+export const deleteUser = async (userId: string) => {
+  try {
+    await client.$transaction([
+      client.automation.deleteMany({ where: { userId } }),
+      client.integrations.deleteMany({ where: { userId } }),
+      client.subscription.delete({ where: { userId } }),
+      client.user.delete({ where: { id: userId } })
+    ])
+    return true
+  } catch (error) {
+    console.error('Delete user error:', error)
+    throw error
+  }
 }

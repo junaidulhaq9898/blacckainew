@@ -1,4 +1,3 @@
-// /src/actions/integrations/index.ts
 'use server'
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -8,66 +7,86 @@ import { onCurrentUser } from '../user';
 import { findUser } from '../user/queries';
 import { createIntegration, getIntegration } from './queries';
 
+const INSTAGRAM_TOKEN_EXPIRY_DAYS = 60;
+
+const validateInstagramToken = async (token: string) => {
+  try {
+    const response = await axios.get(
+      `${process.env.INSTAGRAM_BASE_URL}/me`,
+      { params: { access_token: token } }
+    );
+    return response.status === 200;
+  } catch (error) {
+    console.error('Token validation error:', error);
+    return false;
+  }
+};
+
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
   if (strategy !== 'INSTAGRAM') throw new Error('Invalid integration strategy');
-
   const oauthUrl = process.env.INSTAGRAM_EMBEDDED_OAUTH_URL;
   if (!oauthUrl) throw new Error('Instagram OAuth URL not configured');
-
   return redirect(oauthUrl);
 };
 
 export const onIntegrate = async (code: string) => {
   try {
-    // Get the authenticated Clerk user.
     const clerkUser = await onCurrentUser();
     if (!clerkUser?.id) throw new Error('User not authenticated');
 
-    // Retrieve the corresponding database user record.
     const userRecord = await findUser(clerkUser.id);
     if (!userRecord?.id) throw new Error('User record not found');
 
-    // Retrieve existing integrations.
     const existing = await getIntegration(userRecord.id);
-    console.log('getIntegration result:', existing);
+    const integrations = existing?.integrations || [];
 
-    // Defensive check: default integrations to an empty array.
-    const integrations = (existing && Array.isArray(existing.integrations))
-      ? existing.integrations
-      : [];
-    console.log('Integrations array:', integrations);
+    // Check if there's a valid existing integration
+    const instagramIntegration = integrations.find(i => 
+      i.name === 'INSTAGRAM' && 
+      i.expiresAt && 
+      new Date(i.expiresAt) > new Date()
+    );
 
-    if (integrations.length > 0) {
-      revalidatePath('/integrations');
-      return { success: 'Integration exists' };
+    if (instagramIntegration) {
+      return { success: true, message: 'Valid integration exists' };
     }
 
-    // Exchange the provided code for tokens.
+    // Get new token
     const token = await generateTokens(code);
-    if (!token?.access_token) throw new Error('Failed to get access token');
+    if (!token?.access_token) {
+      throw new Error('Failed to get access token');
+    }
 
-    // Retrieve the Instagram user ID using the access token.
-    const { data } = await axios.get<{ id: string }>(
+    // Validate token
+    const isValid = await validateInstagramToken(token.access_token);
+    if (!isValid) {
+      throw new Error('Invalid Instagram token received');
+    }
+
+    // Get Instagram user ID
+    const { data } = await axios.get(
       `${process.env.INSTAGRAM_BASE_URL}/me`,
       { params: { fields: 'id', access_token: token.access_token } }
     );
+
     if (!data?.id) {
       throw new Error('Failed to retrieve Instagram user id');
     }
 
-    // Set token expiry to 60 days from now.
+    // Set expiration
     const expireDate = new Date();
-    expireDate.setDate(expireDate.getDate() + 60);
+    expireDate.setDate(expireDate.getDate() + INSTAGRAM_TOKEN_EXPIRY_DAYS);
 
-    // Create the integration record.
+    // Create integration
     const integrationResult = await createIntegration({
       userId: userRecord.id,
       token: token.access_token,
       expire: expireDate,
       instagramId: data.id,
     });
+
     if (!integrationResult) {
-      throw new Error('Integration record creation failed');
+      throw new Error('Integration creation failed');
     }
 
     revalidatePath('/integrations');
@@ -82,9 +101,8 @@ export const onIntegrate = async (code: string) => {
   } catch (error: any) {
     console.error('Integration failed:', error);
     return {
-      error: error.response?.data?.message ||
-             error.message ||
-             'Failed to complete Instagram integration',
+      success: false,
+      error: error.message || 'Integration failed'
     };
   }
 };
