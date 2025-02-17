@@ -1,5 +1,3 @@
-// components/automation/trigger/keywords.tsx
-
 import { Input } from '@/components/ui/input'
 import { useKeywords } from '@/hooks/use-automations'
 import { useMutationDataState } from '@/hooks/use-mutation-data'
