@@ -12,6 +12,16 @@ import { openai } from '@/lib/openai'
 import { client } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 
+// Type for DM response
+interface DmResponse {
+  status: number
+  data?: any
+  error?: {
+    message: string
+    code?: number
+  }
+}
+
 // Webhook verification endpoint
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge')
@@ -55,7 +65,8 @@ export async function POST(req: NextRequest) {
         const automation = await getKeywordAutomation(matcher.automationId, true)
         console.log("🤖 Automation details:", automation?.id)
 
-        if (!automation?.User?.integrations?.[0]?.token) {
+        const token = automation?.User?.integrations?.[0]?.token
+        if (!token) {
           console.log("❌ No valid integration token found")
           return NextResponse.json(
             { message: 'No valid integration token' },
@@ -72,11 +83,11 @@ export async function POST(req: NextRequest) {
               prompt: automation.listener.prompt
             })
 
-            const direct_message = await sendDM(
+            const direct_message: DmResponse = await sendDM(
               entry.id,
               messaging.sender.id,
               automation.listener.prompt,
-              automation.User.integrations[0].token
+              token
             )
 
             console.log("📬 DM Response:", direct_message)
@@ -116,21 +127,23 @@ export async function POST(req: NextRequest) {
               ]
             })
 
-            if (smart_ai_message.choices[0].message.content) {
+            const aiContent = smart_ai_message.choices[0].message.content
+            if (aiContent) {
               console.log("💾 Creating chat history")
-              const reciever = await createChatHistory(
-                automation.id,
-                entry.id,
-                messaging.sender.id,
-                messageText
-              )
-
-              const sender = await createChatHistory(
-                automation.id,
-                entry.id,
-                messaging.sender.id,
-                smart_ai_message.choices[0].message.content
-              )
+              const [reciever, sender] = await Promise.all([
+                createChatHistory(
+                  automation.id,
+                  entry.id,
+                  messaging.sender.id,
+                  messageText
+                ),
+                createChatHistory(
+                  automation.id,
+                  entry.id,
+                  messaging.sender.id,
+                  aiContent
+                )
+              ])
 
               await client.$transaction([
                 client.dms.create({ data: reciever }),
@@ -138,11 +151,11 @@ export async function POST(req: NextRequest) {
               ])
 
               console.log("📤 Sending AI response as DM")
-              const direct_message = await sendDM(
+              const direct_message: DmResponse = await sendDM(
                 entry.id,
                 messaging.sender.id,
-                smart_ai_message.choices[0].message.content,
-                automation.User.integrations[0].token
+                aiContent,
+                token
               )
 
               if (direct_message.status === 200) {

@@ -1,127 +1,111 @@
-import axios from 'axios';
+// fetch.ts
 
-// Helper for Instagram API requests
-const makeInstagramRequest = async <T>(config: {
-  url: string
-  method: 'GET' | 'POST'
-  token: string
-  data?: any
-}) => {
-  try {
-    const response = await axios({
-      url: config.url,
-      method: config.method,
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        'Content-Type': 'application/json',
-      },
-      data: config.data,
-    });
+import axios from 'axios'
 
-    if (response.data.error) {
-      throw new Error(response.data.error.message);
-    }
+/**
+ * Generates a Facebook access token and fetches the Instagram Business Account ID.
+ * @param code The authorization code received from the Facebook Login callback.
+ * @returns An object containing the Instagram Business Account ID and access token.
+ */
+export const generateTokens = async (code: string) => {
+  // Step 1: Get the Facebook access token
+  const fbForm = new FormData()
+  fbForm.append('client_id', process.env.FACEBOOK_APP_ID as string)
+  fbForm.append('client_secret', process.env.FACEBOOK_APP_SECRET as string)
+  fbForm.append('grant_type', 'authorization_code')
+  fbForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`)
+  fbForm.append('code', code)
 
-    return response.data as T;
-  } catch (error: any) {
-    console.error('Instagram API error:', error.response?.data || error.message);
-    throw error;
+  const tokenRes = await fetch('https://graph.facebook.com/v21.0/oauth/access_token', {
+    method: 'POST',
+    body: fbForm,
+  })
+
+  if (!tokenRes.ok) {
+    throw new Error(`Failed to fetch Facebook access token: ${tokenRes.statusText}`)
   }
-};
 
-export const refreshToken = async (token: string) => {
-  return makeInstagramRequest<{ access_token: string; expires_in: number }>({
-    url: `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token`,
-    method: 'GET',
-    token,
-  });
-};
+  const tokenData = await tokenRes.json()
+  const accessToken = tokenData.access_token
 
+  // Step 2: Get the user's Facebook Pages
+  const pagesRes = await fetch(
+    `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
+  )
+  if (!pagesRes.ok) {
+    throw new Error(`Failed to fetch Facebook Pages: ${pagesRes.statusText}`)
+  }
+
+  const pagesData = await pagesRes.json()
+  if (!pagesData.data || pagesData.data.length === 0) {
+    throw new Error('No Facebook Pages found for this user.')
+  }
+
+  // Step 3: Get the Instagram Business Account ID from the first page
+  // Note: If the user manages multiple pages, you may need logic to select the correct one.
+  const pageId = pagesData.data[0].id
+  const igRes = await fetch(
+    `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`
+  )
+  if (!igRes.ok) {
+    throw new Error(`Failed to fetch Instagram Business Account: ${igRes.statusText}`)
+  }
+
+  const igData = await igRes.json()
+  if (!igData.instagram_business_account || !igData.instagram_business_account.id) {
+    throw new Error('No Instagram Business Account connected to this Facebook Page.')
+  }
+
+  const igUserId = igData.instagram_business_account.id // This is a string
+
+  // Return the Instagram Business Account ID and access token
+  return {
+    user_id: igUserId,
+    access_token: accessToken,
+  }
+}
+
+/**
+ * Sends a direct message using the Instagram Graph API.
+ * @param userId The Instagram Business Account ID (sender).
+ * @param receiverId The recipient's Instagram user ID.
+ * @param prompt The message text.
+ * @param token The Facebook access token.
+ * @returns The Axios response.
+ */
 export const sendDM = async (
-  appScopedUserId: string, // Should be 178-prefixed ID
-  receiverPageScopedId: string, // 89-prefixed ID for recipient
+  userId: string,
+  receiverId: string,
   prompt: string,
   token: string
 ) => {
-  return makeInstagramRequest({
-    url: `${process.env.INSTAGRAM_BASE_URL}/v18.0/${appScopedUserId}/messages`,
-    method: 'POST',
-    token,
-    data: {
-      recipient: { id: receiverPageScopedId },
-      messaging_type: "RESPONSE",
-      message: { text: prompt },
-    },
-  });
-};
-
-export const generateTokens = async (code: string) => {
+  console.log('Sending message...')
   try {
-    // Step 1: Get short-lived token
-    const form = new FormData();
-    form.append('client_id', process.env.INSTAGRAM_CLIENT_ID!);
-    form.append('client_secret', process.env.INSTAGRAM_CLIENT_SECRET!);
-    form.append('grant_type', 'authorization_code');
-    form.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`);
-    form.append('code', code);
-
-    const tokenResponse = await axios.post(
-      process.env.INSTAGRAM_TOKEN_URL!,
-      form
-    );
-
-    const { access_token, user_id } = tokenResponse.data;
-
-    if (!access_token) {
-      throw new Error('Failed to get access token');
-    }
-
-    // Step 2: Get app-scoped user ID (178-prefixed)
-    const userInfo = await makeInstagramRequest<{
-      id: string
-      username: string
-    }>({
-      url: `${process.env.INSTAGRAM_BASE_URL}/me?fields=id,username`,
-      method: 'GET',
-      token: access_token,
-    });
-
-    // Step 3: Exchange for long-lived token
-    const longToken = await makeInstagramRequest<{
-      access_token: string
-      expires_in: number
-    }>({
-      url: `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}`,
-      method: 'GET',
-      token: access_token,
-    });
-
-    return {
-      ...longToken,
-      user_id: userInfo.id, // This is the correct 178-prefixed ID
-      username: userInfo.username,
-    };
-
+    const response = await axios.post(
+      `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/messages`,
+      {
+        recipient: {
+          id: receiverId,
+        },
+        message: {
+          text: prompt,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    return response
   } catch (error) {
-    console.error('Token generation failed:', error);
-    throw error;
+    console.error('Error sending DM:', error)
+    throw error
   }
-};
+}
 
-// Additional helper for comment replies
-export const sendCommentReply = async (
-  appScopedUserId: string,
-  commentId: string,
-  message: string,
-  token: string
-) => {
-  return makeInstagramRequest({
-    url: `${process.env.INSTAGRAM_BASE_URL}/v18.0/${appScopedUserId}/comments`,
-    method: 'POST',
-    token,
-    data: {
-      message,
-      comment_id: commentId,
-    },
-  });
-};
+export default {
+  generateTokens,
+  sendDM,
+}
