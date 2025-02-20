@@ -1,3 +1,4 @@
+
 // src/actions/integrations/index.ts
 'use server';
 import { redirect } from 'next/navigation';
@@ -5,17 +6,18 @@ import { revalidatePath } from 'next/cache';
 import { generateTokens } from '@/lib/fetch';
 import { onCurrentUser } from '../user';
 import { createIntegration, getIntegration } from './queries';
+
 import { PrismaClient } from '@prisma/client';
 
 export const prisma = new PrismaClient();
-export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
+export async function onOAuthInstagram(strategy: 'INSTAGRAM' | 'CRM') {
   if (strategy !== 'INSTAGRAM') throw new Error('Invalid integration strategy');
   const oauthUrl = `https://api.instagram.com/oauth/authorize?client_id=${process.env.INSTAGRAM_CLIENT_ID}&redirect_uri=${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram&scope=instagram_basic,instagram_manage_messages&response_type=code`;
   if (!oauthUrl) throw new Error('Instagram OAuth URL not configured');
   return redirect(oauthUrl);
-};
+}
 
-export const onIntegrate = async (code: string) => {
+export async function onIntegrate(code: string) {
   try {
     const clerkUser = await onCurrentUser();
     if (!clerkUser?.id) throw new Error('User not authenticated');
@@ -62,4 +64,4 @@ export const onIntegrate = async (code: string) => {
       error: error.message || 'Failed to complete Instagram integration',
     };
   }
-};
+}

@@ -4,7 +4,7 @@ import axios from 'axios';
 /**
  * Refreshes an Instagram long-lived access token.
  */
-export const refreshToken = async (token: string) => {
+export async function refreshToken(token: string) {
   try {
     const response = await axios.get(
       `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token`,
@@ -20,17 +20,17 @@ export const refreshToken = async (token: string) => {
     console.error('Error refreshing token:', error);
     throw error;
   }
-};
+}
 
 /**
  * Sends a direct message using the Instagram Graph API.
  */
-export const sendDM = async (
-  userId: string, // Instagram Business Account ID
+export async function sendDM(
+  userId: string,
   receiverId: string,
   prompt: string,
   token: string
-) => {
+) {
   console.log('Sending message');
   try {
     const response = await axios.post(
@@ -51,12 +51,12 @@ export const sendDM = async (
     console.error('Error sending DM:', error);
     throw error;
   }
-};
+}
 
 /**
  * Generates tokens and fetches the Instagram Business Account ID.
  */
-export const generateTokens = async (code: string) => {
+export async function generateTokens(code: string) {
   try {
     // Validate environment variables
     const requiredVars = [
@@ -98,7 +98,7 @@ export const generateTokens = async (code: string) => {
 
     const shortTokenData = await shortTokenRes.json();
     const shortAccessToken = shortTokenData.access_token;
-    const basicUserId = String(shortTokenData.user_id); // Ensure string type
+    const basicUserId = String(shortTokenData.user_id);
 
     console.log('Short-lived token response:', shortTokenData);
 
@@ -141,18 +141,12 @@ export const generateTokens = async (code: string) => {
 
     return {
       access_token: longAccessToken,
-      instagramId: igData.instagram_business_account.id, // Correct ID for DMs
-      expiresIn: expiresIn, // Seconds until expiration
+      instagramId: igData.instagram_business_account.id,
+      expiresIn: expiresIn,
       username: igData.username,
     };
   } catch (error) {
     console.error('Error in generateTokens:', error);
     throw error;
   }
-};
-
-export default {
-  refreshToken,
-  sendDM,
-  generateTokens,
-};
+}
