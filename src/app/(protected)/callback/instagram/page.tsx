@@ -1,3 +1,4 @@
+// /src/app/(protected)/callback/instagram/page.tsx
 import { onIntegrate } from '@/actions/integrations';
 import { redirect } from 'next/navigation';
 
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default async function Page({ searchParams }: Props) {
+  // Get the code from searchParams, stripping any fragment if present.
   const code = searchParams.code?.split('#_')[0];
 
   if (!code) {
@@ -23,6 +25,7 @@ export default async function Page({ searchParams }: Props) {
       return redirect('/dashboard/integrations?error=instagram_failed');
     }
 
+    // Build the redirect URL in a variable.
     const redirectUrl =
       `/dashboard/integrations?success=true` +
       (result.data?.name ? `&user=${encodeURIComponent(result.data.name)}` : '');

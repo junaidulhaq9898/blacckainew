@@ -1,152 +1,93 @@
-// src/lib/fetch.ts
-import axios from 'axios';
+import axios from 'axios'
 
-/**
- * Refreshes an Instagram long-lived access token.
- */
-export async function refreshToken(token: string) {
-  try {
-    const response = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token`,
-      {
-        params: {
-          grant_type: 'ig_refresh_token',
-          access_token: token,
-        },
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error refreshing token:', error);
-    throw error;
-  }
+export const refreshToken = async (token: string) => {
+  const refresh_token = await axios.get(
+    `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
+  )
+
+  return refresh_token.data
 }
 
-/**
- * Sends a direct message using the Instagram Graph API.
- */
-export async function sendDM(
+export const sendDM = async (
   userId: string,
-  receiverId: string,
+  recieverId: string,
   prompt: string,
   token: string
-) {
-  console.log('Sending message');
-  try {
-    const response = await axios.post(
-      `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/messages`,
-      {
-        recipient: { id: receiverId },
-        message: { text: prompt },
+) => {
+  console.log('sending message')
+  return await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/messages`,
+    {
+      recipient: {
+        id: recieverId,
       },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error sending DM:', error);
-    throw error;
-  }
+      message: {
+        text: prompt,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
 }
 
-/**
- * Generates tokens and fetches the Instagram Business Account ID.
- */
-export async function generateTokens(code: string) {
-  try {
-    // Validate environment variables
-    const requiredVars = [
-      'INSTAGRAM_CLIENT_ID',
-      'INSTAGRAM_CLIENT_SECRET',
-      'INSTAGRAM_BASE_URL',
-      'NEXT_PUBLIC_HOST_URL',
-    ];
-    for (const varName of requiredVars) {
-      if (!process.env[varName]) {
-        throw new Error(`${varName} is not defined in environment variables.`);
-      }
+export const sendPrivateMessage = async (
+  userId: string,
+  recieverId: string,
+  prompt: string,
+  token: string
+) => {
+  console.log('sending message')
+  return await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/${userId}/messages`,
+    {
+      recipient: {
+        comment_id: recieverId,
+      },
+      message: {
+        text: prompt,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     }
+  )
+}
 
-    // Step 1: Get short-lived access token
-    const instaForm = new FormData();
-    instaForm.append('client_id', process.env.INSTAGRAM_CLIENT_ID!);
-    instaForm.append('client_secret', process.env.INSTAGRAM_CLIENT_SECRET!);
-    instaForm.append('grant_type', 'authorization_code');
-    instaForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`);
-    instaForm.append('code', code);
 
-    console.log('Fetching short-lived token with params:', {
-      client_id: process.env.INSTAGRAM_CLIENT_ID,
-      redirect_uri: `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`,
-      code,
-    });
+export const generateTokens = async (code: string) => {
+  const insta_form = new FormData()
+  insta_form.append('client_id', process.env.INSTAGRAM_CLIENT_ID as string)
 
-    const shortTokenRes = await fetch('https://graph.instagram.com/oauth/access_token', {
-      method: 'POST',
-      body: instaForm,
-    });
+  insta_form.append(
+    'client_secret',
+    process.env.INSTAGRAM_CLIENT_SECRET as string
+  )
+  insta_form.append('grant_type', 'authorization_code')
+  insta_form.append(
+    'redirect_uri',
+    `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`
+  )
+  insta_form.append('code', code)
 
-    if (!shortTokenRes.ok) {
-      const errorText = await shortTokenRes.text();
-      console.error('Short-lived token fetch failed:', shortTokenRes.status, errorText);
-      throw new Error(`Failed to fetch short-lived token: ${shortTokenRes.status} - ${errorText}`);
-    }
+  const shortTokenRes = await fetch(process.env.INSTAGRAM_TOKEN_URL as string, {
+    method: 'POST',
+    body: insta_form,
+  })
 
-    const shortTokenData = await shortTokenRes.json();
-    const shortAccessToken = shortTokenData.access_token;
-    const basicUserId = String(shortTokenData.user_id);
+  const token = await shortTokenRes.json()
+  if (token.permissions.length > 0) {
+    console.log(token, 'got permissions')
+    const long_token = await axios.get(
+      `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}&access_token=${token.access_token}`
+    )
 
-    console.log('Short-lived token response:', shortTokenData);
-
-    // Step 2: Exchange for a long-lived token
-    const longTokenRes = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/access_token`,
-      {
-        params: {
-          grant_type: 'ig_exchange_token',
-          client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
-          access_token: shortAccessToken,
-        },
-      }
-    );
-
-    const longAccessToken = longTokenRes.data.access_token;
-    const expiresIn = longTokenRes.data.expires_in;
-
-    console.log('Long-lived token response:', longTokenRes.data);
-
-    // Step 3: Fetch Instagram Business Account ID and username
-    const igUserRes = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/me`,
-      {
-        params: {
-          fields: 'id,username,account_type,instagram_business_account',
-          access_token: longAccessToken,
-        },
-      }
-    );
-
-    const igData = igUserRes.data;
-    console.log('Instagram account data:', igData);
-
-    if (!igData.instagram_business_account || !igData.instagram_business_account.id) {
-      throw new Error(
-        'No Instagram Business Account found. Ensure the account is a Business or Creator account linked to a Facebook Page.'
-      );
-    }
-
-    return {
-      access_token: longAccessToken,
-      instagramId: igData.instagram_business_account.id,
-      expiresIn: expiresIn,
-      username: igData.username,
-    };
-  } catch (error) {
-    console.error('Error in generateTokens:', error);
-    throw error;
+    return long_token.data
   }
 }
