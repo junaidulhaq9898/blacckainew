@@ -1,93 +1,127 @@
-import axios from 'axios'
+import axios from 'axios';
+
+// Helper for Instagram API requests
+const makeInstagramRequest = async <T>(config: {
+  url: string
+  method: 'GET' | 'POST'
+  token: string
+  data?: any
+}) => {
+  try {
+    const response = await axios({
+      url: config.url,
+      method: config.method,
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+      },
+      data: config.data,
+    });
+
+    if (response.data.error) {
+      throw new Error(response.data.error.message);
+    }
+
+    return response.data as T;
+  } catch (error: any) {
+    console.error('Instagram API error:', error.response?.data || error.message);
+    throw error;
+  }
+};
 
 export const refreshToken = async (token: string) => {
-  const refresh_token = await axios.get(
-    `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
-  )
-
-  return refresh_token.data
-}
+  return makeInstagramRequest<{ access_token: string; expires_in: number }>({
+    url: `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token`,
+    method: 'GET',
+    token,
+  });
+};
 
 export const sendDM = async (
-  userId: string,
-  recieverId: string,
+  appScopedUserId: string, // Should be 178-prefixed ID
+  receiverPageScopedId: string, // 89-prefixed ID for recipient
   prompt: string,
   token: string
 ) => {
-  console.log('sending message')
-  return await axios.post(
-    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/messages`,
-    {
-      recipient: {
-        id: recieverId,
-      },
-      message: {
-        text: prompt,
-      },
+  return makeInstagramRequest({
+    url: `${process.env.INSTAGRAM_BASE_URL}/v18.0/${appScopedUserId}/messages`,
+    method: 'POST',
+    token,
+    data: {
+      recipient: { id: receiverPageScopedId },
+      messaging_type: "RESPONSE",
+      message: { text: prompt },
     },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-}
-
-export const sendPrivateMessage = async (
-  userId: string,
-  recieverId: string,
-  prompt: string,
-  token: string
-) => {
-  console.log('sending message')
-  return await axios.post(
-    `${process.env.INSTAGRAM_BASE_URL}/${userId}/messages`,
-    {
-      recipient: {
-        comment_id: recieverId,
-      },
-      message: {
-        text: prompt,
-      },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-}
-
+  });
+};
 
 export const generateTokens = async (code: string) => {
-  const insta_form = new FormData()
-  insta_form.append('client_id', process.env.INSTAGRAM_CLIENT_ID as string)
+  try {
+    // Step 1: Get short-lived token
+    const form = new FormData();
+    form.append('client_id', process.env.INSTAGRAM_CLIENT_ID!);
+    form.append('client_secret', process.env.INSTAGRAM_CLIENT_SECRET!);
+    form.append('grant_type', 'authorization_code');
+    form.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`);
+    form.append('code', code);
 
-  insta_form.append(
-    'client_secret',
-    process.env.INSTAGRAM_CLIENT_SECRET as string
-  )
-  insta_form.append('grant_type', 'authorization_code')
-  insta_form.append(
-    'redirect_uri',
-    `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`
-  )
-  insta_form.append('code', code)
+    const tokenResponse = await axios.post(
+      process.env.INSTAGRAM_TOKEN_URL!,
+      form
+    );
 
-  const shortTokenRes = await fetch(process.env.INSTAGRAM_TOKEN_URL as string, {
-    method: 'POST',
-    body: insta_form,
-  })
+    const { access_token, user_id } = tokenResponse.data;
 
-  const token = await shortTokenRes.json()
-  if (token.permissions.length > 0) {
-    console.log(token, 'got permissions')
-    const long_token = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}&access_token=${token.access_token}`
-    )
+    if (!access_token) {
+      throw new Error('Failed to get access token');
+    }
 
-    return long_token.data
+    // Step 2: Get app-scoped user ID (178-prefixed)
+    const userInfo = await makeInstagramRequest<{
+      id: string
+      username: string
+    }>({
+      url: `${process.env.INSTAGRAM_BASE_URL}/me?fields=id,username`,
+      method: 'GET',
+      token: access_token,
+    });
+
+    // Step 3: Exchange for long-lived token
+    const longToken = await makeInstagramRequest<{
+      access_token: string
+      expires_in: number
+    }>({
+      url: `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}`,
+      method: 'GET',
+      token: access_token,
+    });
+
+    return {
+      ...longToken,
+      user_id: userInfo.id, // This is the correct 178-prefixed ID
+      username: userInfo.username,
+    };
+
+  } catch (error) {
+    console.error('Token generation failed:', error);
+    throw error;
   }
-}
+};
+
+// Additional helper for comment replies
+export const sendCommentReply = async (
+  appScopedUserId: string,
+  commentId: string,
+  message: string,
+  token: string
+) => {
+  return makeInstagramRequest({
+    url: `${process.env.INSTAGRAM_BASE_URL}/v18.0/${appScopedUserId}/comments`,
+    method: 'POST',
+    token,
+    data: {
+      message,
+      comment_id: commentId,
+    },
+  });
+};
