@@ -33,7 +33,7 @@ export const generateTokens = async (code: string) => {
 
     console.log('Requesting short-lived token with params:', {
       client_id: process.env.INSTAGRAM_CLIENT_ID,
-      client_secret: process.env.INSTAGRAM_CLIENT_SECRET ? '[REDACTED]' : undefined, // Hide secret in logs
+      client_secret: process.env.INSTAGRAM_CLIENT_SECRET ? '[REDACTED]' : undefined,
       redirect_uri: `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`,
       code,
     })
@@ -95,11 +95,6 @@ export const generateTokens = async (code: string) => {
   }
 }
 
-/**
- * Refreshes an Instagram access token to obtain a long-lived token.
- * @param token The short-lived access token.
- * @returns The refreshed token data.
- */
 export const refreshToken = async (token: string) => {
   const refresh_token = await axios.get(
     `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
@@ -107,14 +102,6 @@ export const refreshToken = async (token: string) => {
   return refresh_token.data
 }
 
-/**
- * Sends a direct message using the Instagram Graph API.
- * @param userId The Instagram Business Account ID (sender).
- * @param receiverId The recipient's Instagram user ID.
- * @param prompt The message text.
- * @param token The access token.
- * @returns The Axios response.
- */
 export const sendDM = async (
   userId: string,
   receiverId: string,
@@ -137,9 +124,6 @@ export const sendDM = async (
   )
 }
 
-/**
- * Sends a private message (alternative implementation, if needed).
- */
 export const sendPrivateMessage = async (
   userId: string,
   receiverId: string,
