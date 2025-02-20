@@ -10,27 +10,30 @@ import axios from 'axios'
 export const generateTokens = async (code: string) => {
   try {
     // Validate environment variables
-    if (!process.env.INSTAGRAM_APP_ID) {
-      throw new Error('INSTAGRAM_APP_ID is not defined in environment variables.')
+    if (!process.env.INSTAGRAM_CLIENT_ID) {
+      throw new Error('INSTAGRAM_CLIENT_ID is not defined in environment variables.')
     }
-    if (!process.env.INSTAGRAM_APP_SECRET) {
-      throw new Error('INSTAGRAM_APP_SECRET is not defined in environment variables.')
+    if (!process.env.INSTAGRAM_CLIENT_SECRET) {
+      throw new Error('INSTAGRAM_CLIENT_SECRET is not defined in environment variables.')
     }
     if (!process.env.NEXT_PUBLIC_HOST_URL) {
       throw new Error('NEXT_PUBLIC_HOST_URL is not defined in environment variables.')
     }
+    if (!process.env.INSTAGRAM_BASE_URL) {
+      throw new Error('INSTAGRAM_BASE_URL is not defined in environment variables.')
+    }
 
     // Step 1: Get the short-lived access token
     const instaForm = new FormData()
-    instaForm.append('client_id', process.env.INSTAGRAM_APP_ID)
-    instaForm.append('client_secret', process.env.INSTAGRAM_APP_SECRET)
+    instaForm.append('client_id', process.env.INSTAGRAM_CLIENT_ID)
+    instaForm.append('client_secret', process.env.INSTAGRAM_CLIENT_SECRET)
     instaForm.append('grant_type', 'authorization_code')
     instaForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`)
     instaForm.append('code', code)
 
     console.log('Requesting short-lived token with params:', {
-      client_id: process.env.INSTAGRAM_APP_ID,
-      client_secret: process.env.INSTAGRAM_APP_SECRET ? '[REDACTED]' : undefined, // Hide secret in logs
+      client_id: process.env.INSTAGRAM_CLIENT_ID,
+      client_secret: process.env.INSTAGRAM_CLIENT_SECRET ? '[REDACTED]' : undefined, // Hide secret in logs
       redirect_uri: `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`,
       code,
     })
@@ -59,7 +62,7 @@ export const generateTokens = async (code: string) => {
 
     // Step 2: Exchange for a long-lived token
     const longTokenRes = await axios.get(
-      `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortAccessToken}`
+      `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}&access_token=${shortAccessToken}`
     )
 
     console.log('Long-lived token response:', longTokenRes.data)
@@ -92,6 +95,11 @@ export const generateTokens = async (code: string) => {
   }
 }
 
+/**
+ * Refreshes an Instagram access token to obtain a long-lived token.
+ * @param token The short-lived access token.
+ * @returns The refreshed token data.
+ */
 export const refreshToken = async (token: string) => {
   const refresh_token = await axios.get(
     `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
@@ -99,6 +107,14 @@ export const refreshToken = async (token: string) => {
   return refresh_token.data
 }
 
+/**
+ * Sends a direct message using the Instagram Graph API.
+ * @param userId The Instagram Business Account ID (sender).
+ * @param receiverId The recipient's Instagram user ID.
+ * @param prompt The message text.
+ * @param token The access token.
+ * @returns The Axios response.
+ */
 export const sendDM = async (
   userId: string,
   receiverId: string,
@@ -121,6 +137,9 @@ export const sendDM = async (
   )
 }
 
+/**
+ * Sends a private message (alternative implementation, if needed).
+ */
 export const sendPrivateMessage = async (
   userId: string,
   receiverId: string,
