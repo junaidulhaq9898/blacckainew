@@ -9,18 +9,30 @@ import axios from 'axios'
  */
 export const generateTokens = async (code: string) => {
   try {
+    // Validate environment variables
+    if (!process.env.INSTAGRAM_APP_ID) {
+      throw new Error('INSTAGRAM_APP_ID is not defined in environment variables.')
+    }
+    if (!process.env.INSTAGRAM_APP_SECRET) {
+      throw new Error('INSTAGRAM_APP_SECRET is not defined in environment variables.')
+    }
+    if (!process.env.NEXT_PUBLIC_HOST_URL) {
+      throw new Error('NEXT_PUBLIC_HOST_URL is not defined in environment variables.')
+    }
+
     // Step 1: Get the short-lived access token
     const instaForm = new FormData()
-    instaForm.append('client_id', process.env.INSTAGRAM_APP_ID as string)
-    instaForm.append('client_secret', process.env.INSTAGRAM_APP_SECRET as string)
+    instaForm.append('client_id', process.env.INSTAGRAM_APP_ID)
+    instaForm.append('client_secret', process.env.INSTAGRAM_APP_SECRET)
     instaForm.append('grant_type', 'authorization_code')
     instaForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`)
     instaForm.append('code', code)
 
     console.log('Requesting short-lived token with params:', {
       client_id: process.env.INSTAGRAM_APP_ID,
+      client_secret: process.env.INSTAGRAM_APP_SECRET ? '[REDACTED]' : undefined, // Hide secret in logs
       redirect_uri: `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`,
-      code, // Log the code to verify it's received correctly
+      code,
     })
 
     const shortTokenRes = await fetch('https://graph.instagram.com/oauth/access_token', {
@@ -80,7 +92,6 @@ export const generateTokens = async (code: string) => {
   }
 }
 
-// Keep your other functions (refreshToken, sendDM, sendPrivateMessage) as they were
 export const refreshToken = async (token: string) => {
   const refresh_token = await axios.get(
     `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
