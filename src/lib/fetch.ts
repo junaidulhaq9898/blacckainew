@@ -3,66 +3,15 @@
 import axios from 'axios'
 
 /**
- * Generates a Facebook access token and fetches the Instagram Business Account ID.
- * @param code The authorization code received from the Facebook Login callback.
- * @returns An object containing the Instagram Business Account ID and access token.
+ * Refreshes an Instagram access token to obtain a long-lived token.
+ * @param token The short-lived access token.
+ * @returns The refreshed token data.
  */
-export const generateTokens = async (code: string) => {
-  // Step 1: Get the Facebook access token
-  const fbForm = new FormData()
-  fbForm.append('client_id', process.env.FACEBOOK_APP_ID as string)
-  fbForm.append('client_secret', process.env.FACEBOOK_APP_SECRET as string)
-  fbForm.append('grant_type', 'authorization_code')
-  fbForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`)
-  fbForm.append('code', code)
-
-  const tokenRes = await fetch('https://graph.facebook.com/v21.0/oauth/access_token', {
-    method: 'POST',
-    body: fbForm,
-  })
-
-  if (!tokenRes.ok) {
-    throw new Error(`Failed to fetch Facebook access token: ${tokenRes.statusText}`)
-  }
-
-  const tokenData = await tokenRes.json()
-  const accessToken = tokenData.access_token
-
-  // Step 2: Get the user's Facebook Pages
-  const pagesRes = await fetch(
-    `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
+export const refreshToken = async (token: string) => {
+  const refresh_token = await axios.get(
+    `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
   )
-  if (!pagesRes.ok) {
-    throw new Error(`Failed to fetch Facebook Pages: ${pagesRes.statusText}`)
-  }
-
-  const pagesData = await pagesRes.json()
-  if (!pagesData.data || pagesData.data.length === 0) {
-    throw new Error('No Facebook Pages found for this user.')
-  }
-
-  // Step 3: Get the Instagram Business Account ID from the first page
-  // Note: If the user manages multiple pages, you may need logic to select the correct one.
-  const pageId = pagesData.data[0].id
-  const igRes = await fetch(
-    `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`
-  )
-  if (!igRes.ok) {
-    throw new Error(`Failed to fetch Instagram Business Account: ${igRes.statusText}`)
-  }
-
-  const igData = await igRes.json()
-  if (!igData.instagram_business_account || !igData.instagram_business_account.id) {
-    throw new Error('No Instagram Business Account connected to this Facebook Page.')
-  }
-
-  const igUserId = igData.instagram_business_account.id // This is a string
-
-  // Return the Instagram Business Account ID and access token
-  return {
-    user_id: igUserId,
-    access_token: accessToken,
-  }
+  return refresh_token.data
 }
 
 /**
@@ -70,7 +19,7 @@ export const generateTokens = async (code: string) => {
  * @param userId The Instagram Business Account ID (sender).
  * @param receiverId The recipient's Instagram user ID.
  * @param prompt The message text.
- * @param token The Facebook access token.
+ * @param token The access token.
  * @returns The Axios response.
  */
 export const sendDM = async (
@@ -105,7 +54,112 @@ export const sendDM = async (
   }
 }
 
+/**
+ * Generates tokens and fetches the Instagram Business Account ID using the Instagram Graph API.
+ * @param code The authorization code from the Instagram authentication callback.
+ * @returns An object with the Instagram Business Account ID and long-lived access token.
+ */
+export const generateTokens = async (code: string) => {
+  // Step 1: Get the short-lived access token from Facebook Login (Instagram Graph API flow)
+  const instaForm = new FormData()
+  instaForm.append('client_id', process.env.INSTAGRAM_APP_ID as string)
+  instaForm.append('client_secret', process.env.INSTAGRAM_APP_SECRET as string)
+  instaForm.append('grant_type', 'authorization_code')
+  instaForm.append('redirect_uri', `${process.env.NEXT_PUBLIC_HOST_URL}/callback/instagram`)
+  instaForm.append('code', code)
+
+  const shortTokenRes = await fetch('https://graph.instagram.com/oauth/access_token', {
+    method: 'POST',
+    body: instaForm,
+  })
+
+  if (!shortTokenRes.ok) {
+    throw new Error(`Failed to fetch short-lived token: ${shortTokenRes.statusText}`)
+  }
+
+  // Parse response and ensure user_id is a string
+  const shortTokenText = await shortTokenRes.text()
+  const shortTokenData = JSON.parse(shortTokenText, (key, value) => {
+    if (key === 'user_id') return String(value) // Force user_id to string
+    return value
+  })
+
+  const shortAccessToken = shortTokenData.access_token
+  const basicUserId = shortTokenData.user_id // This is the Basic Display API user ID, not usable for messaging yet
+
+  console.log('Short-lived token data:', shortTokenData)
+
+  // Step 2: Exchange for a long-lived token
+  const longTokenRes = await axios.get(
+    `${process.env.INSTAGRAM_BASE_URL}/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortAccessToken}`
+  )
+
+  const longAccessToken = longTokenRes.data.access_token
+  const expiresIn = longTokenRes.data.expires_in
+
+  // Step 3: Get the Instagram Business Account ID using the long-lived token
+  const igUserRes = await axios.get(
+    `${process.env.INSTAGRAM_BASE_URL}/me?fields=id,username,account_type,instagram_business_account&access_token=${longAccessToken}`
+  )
+
+  const igData = igUserRes.data
+  if (!igData.instagram_business_account || !igData.instagram_business_account.id) {
+    throw new Error(
+      'No Instagram Business Account found. Ensure the account is a Business or Creator account linked to a Facebook Page.'
+    )
+  }
+
+  const igBusinessId = igData.instagram_business_account.id // Correct ID for messaging
+
+  console.log('Instagram Business Account ID:', igBusinessId)
+
+  // Return the Instagram Business Account ID and long-livedtoken
+  return {
+    user_id: igBusinessId, // String like "17841466961638820"
+    access_token: longAccessToken,
+    expires_in: expiresIn,
+  }
+}
+
+/**
+ * Sends a private message (alternative implementation, if needed).
+ * Note: This seems redundant with sendDM; you may not need it.
+ */
+export const sendPrivateMessage = async (
+  userId: string,
+  receiverId: string,
+  prompt: string,
+  token: string
+) => {
+  console.log('Sending private message...')
+  try {
+    const response = await axios.post(
+      `${process.env.INSTAGRAM_BASE_URL}/${userId}/messages`,
+      {
+        recipient: {
+          id: receiverId, // Adjusted to match sendDM structure
+        },
+        message: {
+          text: prompt,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    return response
+  } catch (error) {
+    console.error('Error sending private message:', error)
+    throw error
+  }
+}
+
 export default {
-  generateTokens,
+  refreshToken,
   sendDM,
+  sendPrivateMessage,
+  generateTokens,
 }
