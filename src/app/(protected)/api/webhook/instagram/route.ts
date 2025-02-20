@@ -1,3 +1,4 @@
+// src/app/(protected)/api/webhook/instagram/route.ts
 import { findAutomation } from '@/actions/automations/queries'
 import {
   createChatHistory,
@@ -7,20 +8,10 @@ import {
   matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries'
-import { sendDM } from '@/lib/fetch'
+import { sendDM, DmResponse } from '@/lib/fetch' // Updated import
 import { openai } from '@/lib/openai'
 import { client } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
-
-// Type for DM response
-interface DmResponse {
-  status: number
-  data?: any
-  error?: {
-    message: string
-    code?: number
-  }
-}
 
 // Webhook verification endpoint
 export async function GET(req: NextRequest) {
@@ -45,13 +36,11 @@ export async function POST(req: NextRequest) {
     const messaging = entry.messaging?.[0]
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2))
 
-    // Skip if it's a read receipt or echo message
     if (messaging?.read || messaging?.message?.is_echo) {
       console.log("Skipping read receipt or echo message")
       return NextResponse.json({ message: 'Receipt processed' }, { status: 200 })
     }
 
-    // Process actual message
     if (messaging?.message?.text) {
       const messageText = messaging.message.text
       console.log("📝 Processing message:", messageText)
@@ -74,15 +63,9 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        // Handle MESSAGE listener
         if (automation.listener?.listener === 'MESSAGE') {
           try {
-            console.log("📤 Attempting to send DM:", {
-              entryId: entry.id,
-              senderId: messaging.sender.id,
-              prompt: automation.listener.prompt
-            })
-
+            console.log("📤 Attempting to send DM")
             const direct_message: DmResponse = await sendDM(
               entry.id,
               messaging.sender.id,
@@ -91,7 +74,6 @@ export async function POST(req: NextRequest) {
             )
 
             console.log("📬 DM Response:", direct_message)
-
             if (direct_message.status === 200) {
               await trackResponses(automation.id, 'DM')
               console.log("✅ Message sent successfully")
@@ -106,7 +88,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Handle SMARTAI listener
         if (
           automation.listener?.listener === 'SMARTAI' &&
           automation.User?.subscription?.plan === 'PRO'
@@ -130,7 +111,7 @@ export async function POST(req: NextRequest) {
             const aiContent = smart_ai_message.choices[0].message.content
             if (aiContent) {
               console.log("💾 Creating chat history")
-              const [reciever, sender] = await Promise.all([
+              const [receiver, sender] = await Promise.all([
                 createChatHistory(
                   automation.id,
                   entry.id,
@@ -146,7 +127,7 @@ export async function POST(req: NextRequest) {
               ])
 
               await client.$transaction([
-                client.dms.create({ data: reciever }),
+                client.dms.create({ data: receiver }),
                 client.dms.create({ data: sender })
               ])
 
