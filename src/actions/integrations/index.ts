@@ -1,29 +1,23 @@
+// src/actions/integrations/index.ts
 'use server'
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import axios from 'axios';
 import { generateTokens } from '@/lib/fetch';
 import { onCurrentUser } from '../user';
-import { findUser } from '../user/queries';
 import { createIntegration, getIntegration } from './queries';
+import { PrismaClient } from '@prisma/client';
 
-export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
-  if (strategy !== 'INSTAGRAM') throw new Error('Invalid integration strategy');
-
-  const oauthUrl = process.env.INSTAGRAM_EMBEDDED_OAUTH_URL;
-  if (!oauthUrl) throw new Error('Instagram OAuth URL not configured');
-
-  return redirect(oauthUrl);
-};
-
+export const prisma = new PrismaClient();
 export const onIntegrate = async (code: string) => {
   try {
     // Get the authenticated Clerk user.
     const clerkUser = await onCurrentUser();
     if (!clerkUser?.id) throw new Error('User not authenticated');
 
-    // Retrieve the corresponding database user record.
-    const userRecord = await findUser(clerkUser.id);
+    // Retrieve the corresponding database user record using prisma.
+    const userRecord = await prisma.user.findUnique({
+      where: { clerkId: clerkUser.id },
+    });
     if (!userRecord?.id) throw new Error('User record not found');
 
     // Retrieve existing integrations.
@@ -42,17 +36,8 @@ export const onIntegrate = async (code: string) => {
     }
 
     // Exchange the provided code for tokens.
-    const token = await generateTokens(code);
-    if (!token?.access_token) throw new Error('Failed to get access token');
-
-    // Retrieve the Instagram user ID using the access token.
-    const { data } = await axios.get<{ id: string }>(
-      `${process.env.INSTAGRAM_BASE_URL}/me`, // Fixed the string interpolation
-      { params: { fields: 'id', access_token: token.access_token } }
-    );
-    if (!data || !data.id) {
-      throw new Error('Failed to retrieve Instagram user id');
-    }
+    const tokenData = await generateTokens(code);
+    if (!tokenData?.access_token) throw new Error('Failed to get access token');
 
     // Set token expiry to 60 days from now.
     const expireDate = new Date();
@@ -61,9 +46,9 @@ export const onIntegrate = async (code: string) => {
     // Create the integration record.
     const integrationResult = await createIntegration({
       userId: userRecord.id,
-      token: token.access_token,
+      token: tokenData.access_token,
       expire: expireDate,
-      instagramId: data.id,
+      instagramId: tokenData.instagramId, // Assuming generateTokens returns instagramId
     });
     if (!integrationResult) {
       throw new Error('Integration record creation failed');
@@ -81,9 +66,7 @@ export const onIntegrate = async (code: string) => {
   } catch (error: any) {
     console.error('Integration failed:', error);
     return {
-      error: error.response?.data?.message ||
-             error.message ||
-             'Failed to complete Instagram integration',
+      error: error.message || 'Failed to complete Instagram integration',
     };
   }
 };
