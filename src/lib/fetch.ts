@@ -68,7 +68,7 @@ export const generateTokens = async (code: string) => {
   });
 
   const token = await shortTokenRes.json();
-  const userId = String(token.user_id); // Ensure user_id is a string to avoid precision loss
+  const userId = String(token.user_id); // Ensure user_id is a string
 
   if (!token.access_token || !userId) {
     throw new Error('Failed to fetch access token or user ID');
