@@ -1,10 +1,11 @@
-'use server'
+// src/actions/integrations/index.ts
+'use server';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import axios from 'axios';
 import { generateTokens } from '@/lib/fetch';
-import { onCurrentUser } from '../user';
-import { findUser } from '../user/queries';
+import { onCurrentUser } from '@/actions/user'; // Adjusted path assuming src/actions/user.ts
+import { findUser } from '@/actions/user/queries'; // Adjusted path assuming src/actions/user/queries.ts
 import { createIntegration, getIntegration } from './queries';
 
 export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
@@ -18,19 +19,15 @@ export const onOAuthInstagram = (strategy: 'INSTAGRAM' | 'CRM') => {
 
 export const onIntegrate = async (code: string) => {
   try {
-    // Get the authenticated Clerk user.
     const clerkUser = await onCurrentUser();
     if (!clerkUser?.id) throw new Error('User not authenticated');
 
-    // Retrieve the corresponding database user record.
     const userRecord = await findUser(clerkUser.id);
     if (!userRecord?.id) throw new Error('User record not found');
 
-    // Retrieve existing integrations.
     const existing = await getIntegration(userRecord.id);
     console.log('getIntegration result:', existing);
 
-    // Defensive check: default integrations to an empty array.
     const integrations = (existing && Array.isArray(existing.integrations))
       ? existing.integrations
       : [];
@@ -41,36 +38,35 @@ export const onIntegrate = async (code: string) => {
       return { success: 'Integration exists' };
     }
 
-    // Exchange the provided code for tokens.
-    const token = await generateTokens(code);
-    if (!token?.access_token) throw new Error('Failed to get access token');
-
-    // Retrieve the Instagram user ID using the access token.
-    const { data } = await axios.get<{ id: string }>(
-      `${process.env.INSTAGRAM_BASE_URL}/me`, // Fixed the string interpolation
-      { params: { fields: 'id', access_token: token.access_token } }
-    );
-    if (!data || !data.id) {
-      throw new Error('Failed to retrieve Instagram user id');
+    const tokenData = await generateTokens(code);
+    if (!tokenData?.access_token || !tokenData?.user_id) {
+      throw new Error('Failed to get access token or user ID');
     }
 
-    // Set token expiry to 60 days from now.
+    const { data } = await axios.get<{ id: string; username: string }>(
+      `${process.env.INSTAGRAM_BASE_URL}/me`,
+      {
+        params: { fields: 'id,username', access_token: tokenData.access_token },
+      }
+    );
+    if (!data || !data.id) throw new Error('Failed to retrieve Instagram user ID');
+
+    const instagramId = String(data.id); // Ensure ID is a string
+    console.log('Fetched Instagram ID:', instagramId, 'Username:', data.username);
+
     const expireDate = new Date();
     expireDate.setDate(expireDate.getDate() + 60);
 
-    // Create the integration record.
     const integrationResult = await createIntegration({
       userId: userRecord.id,
-      token: token.access_token,
+      token: tokenData.access_token,
       expire: expireDate,
-      instagramId: data.id,
+      instagramId: instagramId,
     });
-    if (!integrationResult) {
-      throw new Error('Integration record creation failed');
-    }
+    if (!integrationResult) throw new Error('Integration record creation failed');
 
     revalidatePath('/integrations');
-    return { 
+    return {
       success: true,
       data: {
         name: [integrationResult.firstname, integrationResult.lastname]
@@ -81,9 +77,7 @@ export const onIntegrate = async (code: string) => {
   } catch (error: any) {
     console.error('Integration failed:', error);
     return {
-      error: error.response?.data?.message ||
-             error.message ||
-             'Failed to complete Instagram integration',
+      error: error.message || 'Failed to complete Instagram integration',
     };
   }
 };

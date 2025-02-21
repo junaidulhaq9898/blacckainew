@@ -1,36 +1,36 @@
-'use client'
-import { onOAuthInstagram } from '@/actions/integrations'
-import { onUserInfo } from '@/actions/user'
-import { Button } from '@/components/ui/button'
-import { useQuery } from '@tanstack/react-query'
-import React from 'react'
+// src/app/(protected)/dashboard/[slug]/integrations/_components/integration-card/index.tsx
+'use client';
+import { onOAuthInstagram } from '@/actions/integrations';
+import { onUserInfo } from '@/actions/user';
+import { Button } from '@/components/ui/button';
+import { useQuery } from '@tanstack/react-query';
+import React from 'react';
 
 type Props = {
-  title: string
-  description: string
-  icon: React.ReactNode
-  strategy: 'INSTAGRAM' | 'CRM'
-}
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  strategy: 'INSTAGRAM' | 'CRM';
+};
 
 const IntegrationCard = ({ description, icon, strategy, title }: Props) => {
-
-  const onInstaOAuth = () => onOAuthInstagram(strategy)
+  const onInstaOAuth = () => onOAuthInstagram(strategy);
 
   const { data } = useQuery({
     queryKey: ['user-profile'],
     queryFn: onUserInfo,
-  })
+  });
 
   const integrated = data?.data?.integrations.find(
     (integration: { name: string }) => integration.name === strategy
-  )
+  );
 
   return (
     <div className="border-2 border-[#3352CC] rounded-2xl gap-x-5 p-5 flex items-center justify-between">
       {icon}
       <div className="flex flex-col flex-1">
-        <h3 className="text-xl"> {title}</h3>
-        <p className="text-[#9D9D9D] text-base ">{description}</p>
+        <h3 className="text-xl">{title}</h3>
+        <p className="text-[#9D9D9D] text-base">{description}</p>
       </div>
       <Button
         onClick={onInstaOAuth}
@@ -40,7 +40,7 @@ const IntegrationCard = ({ description, icon, strategy, title }: Props) => {
         {integrated ? 'Connected' : 'Connect'}
       </Button>
     </div>
-  )
-}
+  );
+};
 
-export default IntegrationCard
+export default IntegrationCard;
