@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Handle SMARTAI listener
+        // Handle SMARTAI listener (Chatbot functionality)
         if (
           automation.listener?.listener === 'SMARTAI' &&
           automation.User?.subscription?.plan === 'PRO'
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
           try {
             console.log("🤖 Processing SMARTAI response")
             const smart_ai_message = await openai.chat.completions.create({
-              model: 'gpt-4',
+              model: 'deepseek/deepseek-chat:free', // Updated to DeepSeek model
               messages: [
                 {
                   role: 'system',
