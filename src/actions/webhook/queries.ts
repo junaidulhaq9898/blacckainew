@@ -1,4 +1,5 @@
-import { client } from '@/lib/prisma'
+// src/actions/webhook/queries.ts
+import { client } from '@/lib/prisma';
 
 export const matchKeyword = async (keyword: string) => {
   return await client.keyword.findFirst({
@@ -8,8 +9,8 @@ export const matchKeyword = async (keyword: string) => {
         mode: 'insensitive',
       },
     },
-  })
-}
+  });
+};
 
 export const getKeywordAutomation = async (
   automationId: string,
@@ -19,7 +20,6 @@ export const getKeywordAutomation = async (
     where: {
       id: automationId,
     },
-
     include: {
       dms: dm,
       trigger: {
@@ -43,8 +43,9 @@ export const getKeywordAutomation = async (
         },
       },
     },
-  })
-}
+  });
+};
+
 export const trackResponses = async (
   automationId: string,
   type: 'COMMENT' | 'DM'
@@ -57,7 +58,7 @@ export const trackResponses = async (
           increment: 1,
         },
       },
-    })
+    });
   }
 
   if (type === 'DM') {
@@ -68,9 +69,9 @@ export const trackResponses = async (
           increment: 1,
         },
       },
-    })
+    });
   }
-}
+};
 
 export const createChatHistory = (
   automationId: string,
@@ -91,8 +92,8 @@ export const createChatHistory = (
         },
       },
     },
-  })
-}
+  });
+};
 
 export const getKeywordPost = async (postId: string, automationId: string) => {
   return await client.post.findFirst({
@@ -100,8 +101,8 @@ export const getKeywordPost = async (postId: string, automationId: string) => {
       AND: [{ postid: postId }, { automationId }],
     },
     select: { automationId: true },
-  })
-}
+  });
+};
 
 export const getChatHistory = async (sender: string, reciever: string) => {
   const history = await client.dms.findMany({
@@ -109,19 +110,19 @@ export const getChatHistory = async (sender: string, reciever: string) => {
       AND: [{ senderId: sender }, { reciever }],
     },
     orderBy: { createdAt: 'asc' },
-  })
+  });
   const chatSession: {
-    role: 'assistant' | 'user'
-    content: string
+    role: 'assistant' | 'user';
+    content: string;
   }[] = history.map((chat) => {
     return {
       role: chat.reciever ? 'assistant' : 'user',
       content: chat.message!,
-    }
-  })
+    };
+  });
 
   return {
     history: chatSession,
-    automationId: history[history.length - 1].automationId,
-  }
-}
+    automationId: history[history.length - 1]?.automationId,
+  };
+};
