@@ -104,10 +104,13 @@ export const getKeywordPost = async (postId: string, automationId: string) => {
   });
 };
 
-export const getChatHistory = async (sender: string, reciever: string) => {
+export const getChatHistory = async (userId: string, accountId: string) => {
   const history = await client.dms.findMany({
     where: {
-      AND: [{ senderId: sender }, { reciever }],
+      OR: [
+        { senderId: userId, reciever: accountId },
+        { senderId: accountId, reciever: userId },
+      ],
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -116,13 +119,26 @@ export const getChatHistory = async (sender: string, reciever: string) => {
     content: string;
   }[] = history.map((chat) => {
     return {
-      role: chat.reciever ? 'assistant' : 'user',
+      role: chat.senderId === userId ? 'user' : 'assistant',
       content: chat.message!,
     };
   });
 
   return {
     history: chatSession,
-    automationId: history[history.length - 1]?.automationId,
+    automationId: history[0]?.automationId, // Assuming all messages share the same automationId
   };
+};
+
+export const hasRecentMessages = async (userId: string, accountId: string, minutes: number = 5) => {
+  const recentTime = new Date(Date.now() - minutes * 60 * 1000);
+  const recentMessages = await client.dms.findMany({
+    where: {
+      OR: [
+        { senderId: userId, reciever: accountId, createdAt: { gt: recentTime } },
+        { senderId: accountId, reciever: userId, createdAt: { gt: recentTime } },
+      ],
+    },
+  });
+  return recentMessages.length > 0;
 };
