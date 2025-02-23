@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (!automation?.User?.integrations?.[0]?.token) {
-        console.log("❌ No valid integration token found"); // Fixed typo here
+        console.log("❌ No valid integration token found");
         return NextResponse.json(
           { message: 'No valid integration token' },
           { status: 200 }
@@ -85,14 +85,14 @@ export async function POST(req: NextRequest) {
       if (automation.listener?.listener === 'MESSAGE') {
         try {
           console.log("📤 Attempting to send DM:", {
-            entryId: entry.id,
-            senderId: messaging.sender.id,
+            entryId: accountId,
+            senderId: userId,
             prompt: automation.listener.prompt,
           });
 
           const direct_message = await sendDM(
-            entry.id,
-            messaging.sender.id,
+            accountId,
+            userId,
             automation.listener.prompt,
             automation.User.integrations[0].token
           );
@@ -121,11 +121,12 @@ export async function POST(req: NextRequest) {
         try {
           console.log("🤖 Processing SMARTAI response");
 
-          // Fetch conversation history
+          // Fetch conversation history (limit to last 5 messages for performance)
           const { history } = await getChatHistory(userId, accountId);
+          const limitedHistory = history.slice(-5); // Limit to last 5 messages
 
           // Add the new user message to the history
-          history.push({ role: 'user', content: messageText });
+          limitedHistory.push({ role: 'user', content: messageText });
 
           // Generate AI response with full history
           const smart_ai_message = await openai.chat.completions.create({
@@ -135,11 +136,13 @@ export async function POST(req: NextRequest) {
                 role: 'system',
                 content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
               },
-              ...history,
+              ...limitedHistory,
             ],
           });
 
-          if (smart_ai_message.choices[0].message.content) {
+          console.log("AI Response Raw:", JSON.stringify(smart_ai_message, null, 2));
+
+          if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
 
             // Log user's message
@@ -158,13 +161,15 @@ export async function POST(req: NextRequest) {
               aiResponse
             );
 
-            console.log("📤 Sending AI response as DM");
+            console.log("📤 Sending AI response as DM:", aiResponse);
             const direct_message = await sendDM(
               accountId,
               userId,
               aiResponse,
               automation.User.integrations[0].token
             );
+
+            console.log("📬 DM Response:", direct_message);
 
             if (direct_message.status === 200) {
               await trackResponses(automation.id, 'DM');
@@ -173,17 +178,28 @@ export async function POST(req: NextRequest) {
                 { message: 'AI response sent' },
                 { status: 200 }
               );
+            } else {
+              console.error("❌ DM failed with status:", direct_message.status);
+              return NextResponse.json(
+                { message: 'Failed to send AI response' },
+                { status: 500 }
+              );
             }
+          } else {
+            console.error("❌ No content in AI response:", smart_ai_message);
+            return NextResponse.json(
+              { message: 'No AI response content' },
+              { status: 500 }
+            );
           }
         } catch (error) {
-          console.error("❌ Error processing AI response:", error);
+          console.error("❌ Error in SMARTAI block:", error);
           return NextResponse.json(
             { message: 'Error processing AI response' },
             { status: 500 }
           );
         }
       } else {
-        // Handle other automation types or no automation
         console.log("❌ No SMARTAI automation or insufficient subscription");
         return NextResponse.json({ message: 'No automation set' }, { status: 200 });
       }

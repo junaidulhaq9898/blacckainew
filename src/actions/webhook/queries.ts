@@ -126,7 +126,7 @@ export const getChatHistory = async (userId: string, accountId: string) => {
 
   return {
     history: chatSession,
-    automationId: history[0]?.automationId, // Assuming all messages share the same automationId
+    automationId: history[0]?.automationId,
   };
 };
 
