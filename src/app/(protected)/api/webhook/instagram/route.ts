@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
 
           // Generate AI response with full history
           const smart_ai_message = await openai.chat.completions.create({
-            model: 'deepseek/deepseek-chat:free',
+            model: 'cognitivecomputations/dolphin3.0-r1-mistral-24b:free',
             messages: [
               {
                 role: 'system',
