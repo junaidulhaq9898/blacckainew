@@ -1,30 +1,31 @@
-import { stripe } from '@/lib/stripe'
-import { currentUser } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import Razorpay from 'razorpay';
+import { currentUser } from '@clerk/nextjs/server';
 
-export async function GET() {
-  const user = await currentUser()
-  if (!user) return NextResponse.json({ status: 404 })
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
 
-  const priceId = process.env.STRIPE_SUBSCRIPTION_PRICE_ID
+export async function POST() {
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ status: 404 });
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
-    success_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment?cancel=true`,
-  })
-  if (session) {
+  const amount = 499; // Amount in INR cents (e.g., ₹4.99)
+
+  try {
+    const order = await razorpay.orders.create({
+      amount,
+      currency: 'INR',
+      receipt: `receipt_order_${new Date().getTime()}`,
+    });
+
     return NextResponse.json({
       status: 200,
-      session_url: session.url,
-    })
+      order,
+    });
+  } catch (error) {
+    console.error('Razorpay Order Creation Error:', error);
+    return NextResponse.json({ status: 500, error: 'Order creation failed' });
   }
-
-  return NextResponse.json({ status: 400 })
 }

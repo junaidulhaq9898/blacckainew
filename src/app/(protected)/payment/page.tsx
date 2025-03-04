@@ -1,38 +1,41 @@
-import { onSubscribe } from '@/actions/user'
-import { redirect } from 'next/navigation'
-import React from 'react'
+import { onSubscribe } from '@/actions/user';
+import { redirect } from 'next/navigation';
 
 type Props = {
   searchParams: {
-    session_id?: string
-    cancel?: boolean
-  }
-}
+    order_id?: string;
+    payment_id?: string;
+    signature?: string;
+    cancel?: boolean;
+  };
+};
 
-const Page = async ({ searchParams: { cancel, session_id } }: Props) => {
-  if (session_id) {
-    const customer = await onSubscribe(session_id)
+const PaymentPage = async ({ searchParams: { order_id, payment_id, signature, cancel } }: Props) => {
+  if (order_id && payment_id && signature) {
+    const customer = await onSubscribe(order_id, payment_id, signature);
 
     if (customer.status === 200) {
-      return redirect('/dashboard')
+      return redirect('/dashboard');
     }
 
     return (
       <div className="flex flex-col justify-center items-center h-screen w-full">
-        <h4 className="text-5xl font-bold">404</h4>
-        <p className="text-xl font-bold">Oppse! Something went wrong</p>
+        <h4 className="text-5xl font-bold">Error</h4>
+        <p className="text-xl font-bold">Oops! Something went wrong.</p>
       </div>
-    )
+    );
   }
 
   if (cancel) {
     return (
-      <div className='"flex flex-col justify-center items-center h-screen w-full"'>
-        <h4 className="text-5xl font-bold">404</h4>
-        <p className="text-xl font-bold">Oppse! Something went wrong</p>
+      <div className="flex flex-col justify-center items-center h-screen w-full">
+        <h4 className="text-5xl font-bold">Payment Cancelled</h4>
+        <p className="text-xl font-bold">You have cancelled the payment process.</p>
       </div>
-    )
+    );
   }
-}
 
-export default Page
+  return null;
+};
+
+export default PaymentPage;
