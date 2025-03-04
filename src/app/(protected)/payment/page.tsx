@@ -1,41 +1,33 @@
-import { onSubscribe } from '@/actions/user';
 import { redirect } from 'next/navigation';
+import React from 'react';
 
 type Props = {
   searchParams: {
-    order_id?: string;
-    payment_id?: string;
-    signature?: string;
+    subscription_id?: string;
     cancel?: boolean;
   };
 };
 
-const PaymentPage = async ({ searchParams: { order_id, payment_id, signature, cancel } }: Props) => {
-  if (order_id && payment_id && signature) {
-    const customer = await onSubscribe(order_id, payment_id, signature);
-
-    if (customer.status === 200) {
-      return redirect('/dashboard');
-    }
-
-    return (
-      <div className="flex flex-col justify-center items-center h-screen w-full">
-        <h4 className="text-5xl font-bold">Error</h4>
-        <p className="text-xl font-bold">Oops! Something went wrong.</p>
-      </div>
-    );
+const Page = async ({ searchParams: { cancel, subscription_id } }: Props) => {
+  if (subscription_id) {
+    return redirect('/dashboard'); // Redirect to dashboard after payment
   }
 
   if (cancel) {
     return (
       <div className="flex flex-col justify-center items-center h-screen w-full">
-        <h4 className="text-5xl font-bold">Payment Cancelled</h4>
-        <p className="text-xl font-bold">You have cancelled the payment process.</p>
+        <h4 className="text-5xl font-bold">404</h4>
+        <p className="text-xl font-bold">Oops! Something went wrong</p>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div className="flex flex-col justify-center items-center h-screen w-full">
+      <h4 className="text-5xl font-bold">Processing...</h4>
+      <p className="text-xl font-bold">Please complete your payment.</p>
+    </div>
+  );
 };
 
-export default PaymentPage;
+export default Page;

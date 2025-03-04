@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { createUser, findUser, updateSubscription } from './queries';
 import { refreshToken } from '@/lib/fetch';
 import { updateIntegration } from '@/actions/integrations/queries';
+import { stripe } from '@/lib/stripe';
 
 export const onCurrentUser = async () => {
   const user = await currentUser();
@@ -71,29 +72,23 @@ export const onUserInfo = async () => {
   }
 };
 
-export const onSubscribe = async (order_id: string, payment_id: string, signature: string) => {
+export const onSubscribe = async (session_id: string) => {
   const clerkUser = await onCurrentUser();
   try {
     const dbUser = await findUser(clerkUser.id);
     if (!dbUser) return { status: 404 };
 
-    // Verify payment signature
-    const crypto = require('crypto');
-    const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
-      .update(order_id + '|' + payment_id)
-      .digest('hex');
-
-    if (expectedSignature === signature) {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session) {
       const subscribed = await updateSubscription(dbUser.id, {
-        customerId: payment_id,
+        customerId: session.customer as string,
         plan: 'PRO',
       });
 
       if (subscribed) return { status: 200 };
       return { status: 401 };
-    } else {
-      return { status: 400, error: 'Invalid signature' };
     }
+    return { status: 404 };
   } catch (error) {
     return { status: 500 };
   }

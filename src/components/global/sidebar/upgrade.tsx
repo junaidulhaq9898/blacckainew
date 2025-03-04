@@ -1,7 +1,7 @@
-import React from 'react'
-import PaymentButton from '../payment-button'
+import React from 'react';
+import PaymentButton from '../PaymentButton/index'; // Corrected path
 
-type Props = {}
+type Props = {};
 
 const UpgradeCard = (props: Props) => {
   return (
@@ -10,11 +10,11 @@ const UpgradeCard = (props: Props) => {
         Upgrade to {''}
         <span
           className="bg-gradient-to-r 
-        from-[#CC3BD4] 
-        to-[#D064AC] 
-        font-bold 
-        bg-clip-text 
-        text-transparent"
+          from-[#CC3BD4] 
+          to-[#D064AC] 
+          font-bold 
+          bg-clip-text 
+          text-transparent"
         >
           Smart AI
         </span>
@@ -24,7 +24,7 @@ const UpgradeCard = (props: Props) => {
       </p>
       <PaymentButton />
     </div>
-  )
-}
+  );
+};
 
-export default UpgradeCard
+export default UpgradeCard;

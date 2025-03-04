@@ -1,31 +1,29 @@
-import { NextResponse } from 'next/server';
-import Razorpay from 'razorpay';
+import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
-
-export async function POST() {
+export async function GET() {
   const user = await currentUser();
-  if (!user) return NextResponse.json({ status: 404 });
+  if (!user) return NextResponse.json({ status: 404, message: 'User not found' });
 
-  const amount = 499; // Amount in INR cents (e.g., ₹4.99)
+  const planId = process.env.RAZORPAY_PLAN_ID;
+  if (!planId) {
+    console.error('RAZORPAY_PLAN_ID is not set');
+    return NextResponse.json({ status: 500, message: 'Server configuration error' });
+  }
 
-  try {
-    const order = await razorpay.orders.create({
-      amount,
-      currency: 'INR',
-      receipt: `receipt_order_${new Date().getTime()}`,
-    });
+  const subscription: any = await razorpay.subscriptions.create({
+    plan_id: planId,
+    customer_notify: 1,
+    total_count: 12,
+    notes: { userId: user.id },
+  });
 
+  if (subscription) {
     return NextResponse.json({
       status: 200,
-      order,
+      session_url: subscription.short_url,
     });
-  } catch (error) {
-    console.error('Razorpay Order Creation Error:', error);
-    return NextResponse.json({ status: 500, error: 'Order creation failed' });
   }
+  return NextResponse.json({ status: 400, message: 'Failed to create subscription' });
 }
