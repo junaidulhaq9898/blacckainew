@@ -1,8 +1,9 @@
+// app/api/payment/route.ts
 import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-export async function GET() {
+export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ status: 404, message: 'User not found' });
 
