@@ -2,7 +2,7 @@
 import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { findUser, updateSubscription } from '@/actions/user/queries'; // Import both functions
+import { findUser } from '@/actions/user/queries'; // Only import findUser
 
 export async function POST(request: Request) {
   // Get the authenticated user from Clerk
@@ -32,15 +32,11 @@ export async function POST(request: Request) {
       notes: { userId: user.id },
     });
 
-    // Update the user's subscription in the database
-    await updateSubscription(user.id, {
-      customerId: subscription.id,
-      plan: 'PRO', // Use a valid SUBSCRIPTION_PLAN value
-    });
+    // Do NOT update the subscription here; wait for the webhook after payment
 
     return NextResponse.json({
       status: 200,
-      subscription_id: subscription.id,
+      session_url: subscription.short_url, // Return the checkout URL
     });
   } catch (error) {
     console.error('Subscription creation error:', error);
