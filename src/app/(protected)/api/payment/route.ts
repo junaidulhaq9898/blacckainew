@@ -2,17 +2,14 @@
 import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { findUser } from '@/actions/user/queries'; // Only import findUser
 
 export async function POST(request: Request) {
-  // Get the authenticated user from Clerk
   const clerkUser = await currentUser();
   if (!clerkUser) {
     return NextResponse.json({ status: 401, message: 'Unauthorized' });
   }
 
-  // Fetch user from your database
-  const user = await findUser(clerkUser.id);
+  const user = { id: clerkUser.id, email: clerkUser.emailAddresses[0].emailAddress };
   if (!user) {
     return NextResponse.json({ status: 404, message: 'User not found' });
   }
@@ -24,7 +21,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Create the Razorpay subscription
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: 1,
@@ -32,14 +28,23 @@ export async function POST(request: Request) {
       notes: { userId: user.id },
     });
 
-    // Do NOT update the subscription here; wait for the webhook after payment
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: 50000, // Replace with your plan's amount in paise
+      currency: 'INR',
+      description: 'Upgrade to PRO Plan',
+      customer: {
+        email: user.email,
+      },
+      callback_url: `https://yourdomain.com/payment-success?subscription_id=${subscription.id}`,
+      callback_method: 'get',
+    });
 
     return NextResponse.json({
       status: 200,
-      session_url: subscription.short_url, // Return the checkout URL
+      session_url: paymentLink.short_url,
     });
   } catch (error) {
-    console.error('Subscription creation error:', error);
-    return NextResponse.json({ status: 500, message: 'Failed to create subscription' });
+    console.error('Payment link creation error:', error);
+    return NextResponse.json({ status: 500, message: 'Failed to initiate payment' });
   }
 }
