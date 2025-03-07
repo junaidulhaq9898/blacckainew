@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       customer: {
         email: user.email,
       },
-      callback_url: `https://yourdomain.com/payment-success?subscription_id=${subscription.id}`,
+      callback_url: `https://blacckai.com/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
     });
 

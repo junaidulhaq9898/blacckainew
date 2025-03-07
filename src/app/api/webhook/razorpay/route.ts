@@ -1,20 +1,14 @@
 // app/api/webhooks/razorpay/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { updateSubscription } from '@/actions/user/queries'; // Your DB update function
+import { updateSubscription } from '@/actions/user/queries';
 
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature');
 
-  // Verify webhook signature
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error('Webhook secret not set');
-    return NextResponse.json({ status: 500, message: 'Server error' });
-  }
-
-  const shasum = crypto.createHmac('sha256', secret);
+  // Verify the webhook signature
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
   shasum.update(body);
   const digest = shasum.digest('hex');
 
@@ -24,26 +18,28 @@ export async function POST(request: Request) {
   }
 
   const payload = JSON.parse(body);
-  const event = payload.event;
+  console.log('Webhook payload:', payload); // Log the full payload
+  console.log('Webhook event:', payload.event); // Log the event type
 
-  if (event === 'payment_link.paid') {
-    const paymentLink = payload.payload.payment_link.entity;
-    const subscriptionId = paymentLink.subscription_id;
-    const userId = paymentLink.notes?.userId;
+  if (payload.event === 'subscription.charged') {
+    const subscription = payload.payload.subscription.entity;
+    const userId = subscription.notes?.userId; // Safely access userId
+    console.log('userId from notes:', userId); // Log the userId
 
     if (!userId) {
-      console.error('userId not found in payment link notes');
+      console.error('userId not found in subscription notes');
       return NextResponse.json({ status: 400, message: 'Missing userId' });
     }
 
-    // Update user's plan to PRO
     try {
-      await updateSubscription(userId, { plan: 'PRO', customerId: subscriptionId });
+      await updateSubscription(userId, { plan: 'PRO', customerId: subscription.id });
       console.log(`Updated plan to PRO for user ${userId}`);
     } catch (error) {
       console.error('Failed to update subscription:', error);
       return NextResponse.json({ status: 500, message: 'Failed to update plan' });
     }
+  } else {
+    console.log('Event not handled:', payload.event); // Log unhandled events
   }
 
   return NextResponse.json({ status: 200, message: 'Webhook processed' });
