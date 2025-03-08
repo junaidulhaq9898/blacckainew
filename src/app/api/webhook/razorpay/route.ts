@@ -1,13 +1,27 @@
-// app/api/webhooks/razorpay/route.ts
+// app/api/webhook/razorpay/route.ts
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import Razorpay from 'razorpay';
+import crypto from 'crypto'; // Correct import for Node.js crypto module
 import { updateSubscription } from '@/actions/user/queries';
+
+// Initialize Razorpay instance
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
+
+// Function to get subscription ID from order ID (placeholder - implement your logic)
+async function getSubscriptionIdFromOrder(orderId: string): Promise<string | null> {
+  // Placeholder: Replace with your database query to find subscription ID
+  console.log(`Looking up subscription for order ${orderId}`);
+  return null; // Implement this based on your database setup
+}
 
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature');
 
-  // Verify the webhook signature using Razorpay webhook secret
+  // Verify webhook signature
   const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
   shasum.update(body);
   const digest = shasum.digest('hex');
@@ -19,44 +33,46 @@ export async function POST(request: Request) {
 
   const payload = JSON.parse(body);
   console.log('Webhook event:', payload.event);
-  console.log('Webhook payload:', JSON.stringify(payload, null, 2));
 
-  let userId: string | undefined;
-  let subscriptionId: string | undefined;
+  if (payload.event === 'payment.captured') {
+    const payment = payload.payload.payment.entity;
+    const orderId = payment.order_id;
 
-  // Handle relevant Razorpay events to extract userId and subscriptionId
-  if (payload.event === 'subscription.charged' || payload.event === 'subscription.activated') {
-    const subscription = payload.payload.subscription.entity;
-    userId = subscription.notes?.userId; // Extract userId from notes
-    subscriptionId = subscription.id;
-  } else if (payload.event === 'payment_link.paid') {
-    const paymentLink = payload.payload.payment_link.entity;
-    userId = paymentLink.notes?.userId; // Extract userId from notes
-    subscriptionId = paymentLink.subscription_id;
+    try {
+      // Fetch order details from Razorpay
+      const order = await razorpay.orders.fetch(orderId);
+      console.log('Order details:', order);
+
+      // Get the subscription ID linked to this order
+      const subscriptionId = await getSubscriptionIdFromOrder(orderId);
+
+      if (subscriptionId) {
+        // Fetch subscription details
+        const subscription = await razorpay.subscriptions.fetch(subscriptionId);
+        console.log('Subscription details:', subscription);
+
+        // Extract userId from subscription notes and ensure it’s a string
+        const userIdRaw = subscription.notes?.userId;
+        const userId = typeof userIdRaw === 'number' ? userIdRaw.toString() : userIdRaw;
+
+        if (!userId) {
+          console.error('Missing userId in subscription notes');
+          return NextResponse.json({ status: 400, message: 'Missing userId' });
+        }
+
+        // Update the user's plan to PRO
+        await updateSubscription(userId, { plan: 'PRO', customerId: subscriptionId });
+        console.log(`Updated plan to PRO for user ${userId}`);
+      } else {
+        console.log('No subscription linked to this order');
+      }
+    } catch (error) {
+      console.error('Error processing payment.captured:', error);
+      return NextResponse.json({ status: 500, message: 'Processing failed' });
+    }
   } else {
-    console.log('Unhandled event:', payload.event);
-    return NextResponse.json({ status: 200, message: 'Event ignored' });
+    console.log('Event ignored:', payload.event);
   }
 
-  // Validate that userId and subscriptionId are present
-  if (!userId) {
-    console.error('userId not found in webhook payload');
-    return NextResponse.json({ status: 400, message: 'Missing userId' });
-  }
-
-  if (!subscriptionId) {
-    console.error('subscriptionId not found in webhook payload');
-    return NextResponse.json({ status: 400, message: 'Missing subscriptionId' });
-  }
-
-  try {
-    // Update the subscription plan to "PRO" in the database
-    await updateSubscription(userId, { plan: 'PRO', customerId: subscriptionId });
-    console.log(`Updated plan to PRO for user ${userId}`);
-  } catch (error) {
-    console.error('Subscription update failed:', error);
-    return NextResponse.json({ status: 500, message: 'Failed to update plan' });
-  }
-
-  return NextResponse.json({ status: 200, message: 'Webhook processed' });
+  return NextResponse.json({ status: 200, message: 'Webhook received' });
 }

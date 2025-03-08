@@ -24,12 +24,13 @@ export async function POST(request: Request) {
 
   try {
     // Create a Razorpay subscription with userId in notes
-    const subscription = await razorpay.subscriptions.create({
-      plan_id: planId,
-      customer_notify: 1,
-      total_count: 12, // Adjust based on your subscription duration
-      notes: { userId: dbUser.id }, // Pass database user ID (UUID) in notes
-    });
+   // app/(protected)/api/payment/route.ts
+const subscription = await razorpay.subscriptions.create({
+  plan_id: planId,
+  customer_notify: 1,
+  total_count: 12,
+  notes: { userId: dbUser.id }, // Ensure this matches your database user ID
+});
 
     // Create a payment link for the subscription
     const paymentLink = await razorpay.paymentLink.create({
