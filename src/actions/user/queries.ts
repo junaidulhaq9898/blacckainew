@@ -160,9 +160,15 @@ export const findUser = async (clerkId: string) => {
   }
 };
 
+// src/actions/user/queries.ts
 export const updateSubscription = async (userId: string, data: SubscriptionUpdate) => {
   try {
-    return await client.subscription.upsert({
+    // Check if the subscription already exists
+    const existingSubscription = await client.subscription.findUnique({ where: { userId } });
+    console.log('Existing subscription:', existingSubscription);
+
+    // Upsert the subscription (create if it doesn't exist, update if it does)
+    const updatedSubscription = await client.subscription.upsert({
       where: { userId },
       create: {
         userId,
@@ -174,6 +180,8 @@ export const updateSubscription = async (userId: string, data: SubscriptionUpdat
         plan: data.plan,
       },
     });
+    console.log('Updated subscription:', updatedSubscription);
+    return updatedSubscription;
   } catch (error) {
     console.error('Update subscription error:', error);
     throw error;

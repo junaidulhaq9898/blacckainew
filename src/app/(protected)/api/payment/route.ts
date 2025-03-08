@@ -2,7 +2,7 @@
 import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { findUser } from '@/actions/user/queries'; // Ensure this retrieves the database user
+import { findUser } from '@/actions/user/queries';
 
 export async function POST(request: Request) {
   const clerkUser = await currentUser();
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 401, message: 'Unauthorized' });
   }
 
-  // Fetch the database user using Clerk's user ID
+  // Fetch the database user using Clerk's user ID to get the correct userId (UUID)
   const dbUser = await findUser(clerkUser.id);
   if (!dbUser) {
     return NextResponse.json({ status: 404, message: 'User not found' });
@@ -23,25 +23,27 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Create a Razorpay subscription with userId in notes
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: 1,
-      total_count: 12,
-      notes: { userId: dbUser.id }, // Use database user ID (UUID)
+      total_count: 12, // Adjust based on your subscription duration
+      notes: { userId: dbUser.id }, // Pass database user ID (UUID) in notes
     });
 
+    // Create a payment link for the subscription
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // Adjust to your plan amount in paise
+      amount: 50000, // Amount in paise (e.g., 500 INR = 50000 paise)
       currency: 'INR',
       description: 'Upgrade to PRO Plan',
       customer: { email: dbUser.email },
-      callback_url: `https://blacckai.com/payment-success?subscription_id=${subscription.id}`,
+      callback_url: `https://www.blacckai.com/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
     });
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url,
+      session_url: paymentLink.short_url, // Redirect user to this URL
     });
   } catch (error) {
     console.error('Payment link creation error:', error);
