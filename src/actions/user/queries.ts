@@ -160,15 +160,9 @@ export const findUser = async (clerkId: string) => {
   }
 };
 
-// src/actions/user/queries.ts
 export const updateSubscription = async (userId: string, data: SubscriptionUpdate) => {
   try {
-    // Check if the subscription already exists
-    const existingSubscription = await client.subscription.findUnique({ where: { userId } });
-    console.log('Existing subscription:', existingSubscription);
-
-    // Upsert the subscription (create if it doesn't exist, update if it does)
-    const updatedSubscription = await client.subscription.upsert({
+    return await client.subscription.upsert({
       where: { userId },
       create: {
         userId,
@@ -180,8 +174,6 @@ export const updateSubscription = async (userId: string, data: SubscriptionUpdat
         plan: data.plan,
       },
     });
-    console.log('Updated subscription:', updatedSubscription);
-    return updatedSubscription;
   } catch (error) {
     console.error('Update subscription error:', error);
     throw error;
@@ -271,6 +263,23 @@ export const deleteUser = async (userId: string) => {
     return true;
   } catch (error) {
     console.error('Delete user error:', error);
+    throw error;
+  }
+};
+
+// Added function to fetch user by Clerk ID
+export const getUserByClerkId = async (clerkId: string) => {
+  try {
+    const user = await client.user.findUnique({
+      where: { clerkId },
+      include: {
+        subscription: true,
+        integrations: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    return user;
+  } catch (error) {
+    console.error('Error fetching user by Clerk ID:', error);
     throw error;
   }
 };

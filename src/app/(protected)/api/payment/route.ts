@@ -2,16 +2,17 @@
 import { razorpay } from '@/lib/razorpay';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { findUser } from '@/actions/user/queries';
+import { getUserByClerkId } from '@/actions/user/queries';
 
 export async function POST(request: Request) {
+  // Get the authenticated Clerk user
   const clerkUser = await currentUser();
   if (!clerkUser) {
     return NextResponse.json({ status: 401, message: 'Unauthorized' });
   }
 
-  // Fetch the database user using Clerk's user ID to get the correct userId (UUID)
-  const dbUser = await findUser(clerkUser.id);
+  // Fetch the database user using Clerk's user ID
+  const dbUser = await getUserByClerkId(clerkUser.id);
   if (!dbUser) {
     return NextResponse.json({ status: 404, message: 'User not found' });
   }
@@ -24,13 +25,12 @@ export async function POST(request: Request) {
 
   try {
     // Create a Razorpay subscription with userId in notes
-   // app/(protected)/api/payment/route.ts
-const subscription = await razorpay.subscriptions.create({
-  plan_id: planId,
-  customer_notify: 1,
-  total_count: 12,
-  notes: { userId: dbUser.id }, // Ensure this matches your database user ID
-});
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: planId,
+      customer_notify: 1,
+      total_count: 12,
+      notes: { userId: dbUser.id }, // Store the UUID from your database
+    });
 
     // Create a payment link for the subscription
     const paymentLink = await razorpay.paymentLink.create({
@@ -40,6 +40,7 @@ const subscription = await razorpay.subscriptions.create({
       customer: { email: dbUser.email },
       callback_url: `https://www.blacckai.com/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
+      notes: { userId: dbUser.id }, // Also store userId in payment link notes
     });
 
     return NextResponse.json({
