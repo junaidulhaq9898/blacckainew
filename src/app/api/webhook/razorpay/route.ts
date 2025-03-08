@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { razorpay } from '@/lib/razorpay';
-import { updateSubscription } from '@/actions/user/queries';
-import { client } from '@/lib/prisma'; // Your Prisma client
+import { razorpay } from '@/lib/razorpay'; // Razorpay client setup
+import { updateSubscription } from '@/actions/user/queries'; // Correct module for subscription update
+import { client } from '@/lib/prisma'; // Prisma client
 
 export async function POST(request: Request) {
   // Get the raw body and signature for verification
@@ -38,11 +38,11 @@ export async function POST(request: Request) {
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // Extract userId from notes, asserting as string | undefined
+      // Extract userId from notes, with type safety
       const userId = subscription.notes?.userId as string | undefined;
       console.log('Extracted userId:', userId);
 
-      // Validate userId is a string
+      // Validate userId
       if (!userId || typeof userId !== 'string') {
         console.error('Invalid or missing userId in subscription notes');
         return NextResponse.json({ status: 400, message: 'Invalid userId' });
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       });
       console.log('Existing subscription:', existingSubscription);
 
-      // Update the subscription (assumes updateSubscription handles the logic)
+      // Update the subscription to PRO plan
       await updateSubscription(userId, {
         plan: 'PRO',
         customerId: subscriptionId,
