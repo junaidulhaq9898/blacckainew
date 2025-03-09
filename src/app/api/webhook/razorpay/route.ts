@@ -5,11 +5,11 @@ import { updateSubscription } from '@/actions/user/queries'; // Subscription upd
 import { client } from '@/lib/prisma'; // Prisma client
 
 export async function POST(request: Request) {
-  // Get the raw body and signature for verification
+  // Get raw body and signature for verification
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature');
 
-  // Verify the webhook signature
+  // Verify webhook signature
   const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
   shasum.update(body);
   const digest = shasum.digest('hex');
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 400, message: 'Invalid signature' });
   }
 
-  // Parse the webhook payload
+  // Parse webhook payload
   const payload = JSON.parse(body);
   console.log('Received webhook event:', payload.event);
 
@@ -34,37 +34,23 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Fetch the subscription from Razorpay
+      // Fetch subscription details from Razorpay
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // Extract userId from notes and convert it to a string
-      const userIdRaw = subscription.notes?.userId;
-      const userId = String(userIdRaw); // Ensures userId is always a string for Prisma
+      // Extract userId from subscription notes (adjust based on your setup)
+      const userId = String(subscription.notes?.userId || '');
 
-      // Validate userId
-      if (!userId || userId === 'undefined') {
-        console.error('Invalid or missing userId in subscription notes');
+      if (!userId) {
+        console.error('Missing userId in subscription notes');
         return NextResponse.json({ status: 400, message: 'Invalid userId' });
       }
 
-      // Check for existing subscription
-      const existingSubscription = await client.subscription.findUnique({
-        where: { userId },
-      });
-      console.log('Existing subscription:', existingSubscription);
-
-      // Update the subscription to PRO plan
+      // Update the user's subscription
       await updateSubscription(userId, {
         plan: 'PRO',
         customerId: subscriptionId,
       });
-
-      // Verify the update
-      const updatedSubscription = await client.subscription.findUnique({
-        where: { userId },
-      });
-      console.log('Updated subscription:', updatedSubscription);
 
       return NextResponse.json({ status: 200, message: 'Webhook processed' });
     } catch (error) {

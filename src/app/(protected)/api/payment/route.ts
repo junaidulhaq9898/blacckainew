@@ -5,17 +5,16 @@ import { NextResponse } from 'next/server';
 import { getUserByClerkId } from '@/actions/user/queries';
 
 export async function POST(request: Request) {
-  // Get the authenticated Clerk user
   const clerkUser = await currentUser();
   if (!clerkUser) {
     return NextResponse.json({ status: 401, message: 'Unauthorized' });
   }
 
-  // Fetch the database user using Clerk's user ID
   const dbUser = await getUserByClerkId(clerkUser.id);
   if (!dbUser) {
     return NextResponse.json({ status: 404, message: 'User not found' });
   }
+  console.log('Database userId:', dbUser.id); // Log to confirm
 
   const planId = process.env.RAZORPAY_PLAN_ID;
   if (!planId) {
@@ -24,28 +23,27 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Create a Razorpay subscription with userId in notes
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: 1,
       total_count: 12,
-      notes: { userId: dbUser.id }, // Store the UUID from your database
+      notes: { userId: dbUser.id },
     });
+    console.log('Created subscription with userId:', dbUser.id);
 
-    // Create a payment link for the subscription
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // Amount in paise (e.g., 500 INR = 50000 paise)
+      amount: 50000,
       currency: 'INR',
       description: 'Upgrade to PRO Plan',
       customer: { email: dbUser.email },
       callback_url: `https://www.blacckai.com/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
-      notes: { userId: dbUser.id }, // Also store userId in payment link notes
+      notes: { userId: dbUser.id },
     });
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url, // Redirect user to this URL
+      session_url: paymentLink.short_url,
     });
   } catch (error) {
     console.error('Payment link creation error:', error);

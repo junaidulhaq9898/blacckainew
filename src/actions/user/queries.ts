@@ -162,7 +162,7 @@ export const findUser = async (clerkId: string) => {
 
 export const updateSubscription = async (userId: string, data: SubscriptionUpdate) => {
   try {
-    return await client.subscription.upsert({
+    const subscription = await client.subscription.upsert({
       where: { userId },
       create: {
         userId,
@@ -174,8 +174,10 @@ export const updateSubscription = async (userId: string, data: SubscriptionUpdat
         plan: data.plan,
       },
     });
+    console.log('Subscription updated:', subscription);
+    return subscription;
   } catch (error) {
-    console.error('Update subscription error:', error);
+    console.error('Update subscription error for userId:', userId, error);
     throw error;
   }
 };
