@@ -1,17 +1,15 @@
-// app/api/webhook/razorpay/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { razorpay } from '@/lib/razorpay'; // Your Razorpay client
-import { client } from '@/lib/prisma'; // Your Prisma client
+import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
+import { client } from '@/lib/prisma';     // Your Prisma client
 
 export async function POST(request: Request) {
-  // Get raw body and signature
+  // Get the webhook body and signature
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature');
 
-  // Verify webhook signature
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET!;
-  const shasum = crypto.createHmac('sha256', secret);
+  // Verify the webhook signature
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
   shasum.update(body);
   const digest = shasum.digest('hex');
 
@@ -20,64 +18,58 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 400, message: 'Invalid signature' });
   }
 
-  // Parse payload
+  // Parse the webhook payload
   const payload = JSON.parse(body);
-  if (payload.event !== 'payment.captured') {
-    return NextResponse.json({ status: 200, message: 'Event ignored' });
-  }
+  console.log('Webhook event received:', payload.event);
 
-  const payment = payload.payload.payment.entity;
-  const subscriptionId = payment.subscription_id;
+  // Handle the payment.captured event
+  if (payload.event === 'payment.captured') {
+    const payment = payload.payload.payment.entity;
+    const subscriptionId = payment.subscription_id;
 
-  if (!subscriptionId) {
-    console.error('No subscription_id found');
-    return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
-  }
-
-  try {
-    // Fetch subscription details from Razorpay
-    const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-    const userId = subscription.notes?.userId;
-
-    if (!userId || typeof userId !== 'string') {
-      console.error('Invalid userId in subscription notes:', subscription.notes);
-      return NextResponse.json({ status: 400, message: 'Invalid userId' });
+    if (!subscriptionId) {
+      console.error('No subscription_id found in payment');
+      return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
     }
 
-    // Check if user exists
-    const user = await client.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      console.error(`User not found: ${userId}`);
-      return NextResponse.json({ status: 404, message: 'User not found' });
+    try {
+      // Fetch the subscription details from Razorpay
+      const subscription = await razorpay.subscriptions.fetch(subscriptionId);
+      const userId = subscription.notes?.userId; // Assuming userId is stored in notes
+
+      if (!userId || typeof userId !== 'string') {
+        console.error('Invalid or missing userId in subscription notes');
+        return NextResponse.json({ status: 400, message: 'Invalid userId' });
+      }
+      console.log('User ID extracted:', userId);
+
+      // Update or create the subscription in the database
+      const updatedSubscription = await client.subscription.upsert({
+        where: { userId }, // Find by userId
+        update: {
+          plan: 'PRO', // Change to PRO
+          customerId: subscriptionId, // Store the subscription ID
+          updatedAt: new Date(),
+        },
+        create: {
+          userId,
+          plan: 'PRO', // Start as PRO if new
+          customerId: subscriptionId,
+        },
+      });
+      console.log('Subscription updated:', updatedSubscription);
+
+      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error processing webhook:', error.message);
+      } else {
+        console.error('Error processing webhook:', String(error));
+      }
+      return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
     }
-
-    // Update subscription
-    await client.subscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        customerId: subscriptionId,
-        plan: 'PRO',
-      },
-      update: {
-        customerId: subscriptionId,
-        plan: 'PRO',
-      },
-    });
-
-    // Verify the update
-    const updatedSubscription = await client.subscription.findUnique({
-      where: { userId },
-    });
-    if (updatedSubscription?.plan !== 'PRO') {
-      console.error('Subscription update failed');
-      return NextResponse.json({ status: 500, message: 'Failed to update plan' });
-    }
-
-    console.log(`Subscription updated for user ${userId} to PRO`);
-    return NextResponse.json({ status: 200, message: 'Webhook processed successfully' });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    return NextResponse.json({ status: 500, message: 'Webhook processing failed' });
   }
+
+  // Ignore other events
+  return NextResponse.json({ status: 200, message: 'Event ignored' });
 }
