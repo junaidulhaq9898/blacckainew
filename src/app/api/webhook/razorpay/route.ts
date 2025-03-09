@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import * as crypto from 'crypto'; // Correct import for Node.js crypto
 import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
 import { client } from '@/lib/prisma';     // Your Prisma client
 
@@ -62,11 +62,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
     } catch (error: unknown) {
       if (error instanceof Error) {
-        // TypeScript now knows error is an Error object
-        console.error('An error occurred:', error.message);
+        console.error('Error processing webhook:', error.message);
       } else {
-        // Handle cases where error is not an Error object
-        console.error('An error occurred:', String(error));
+        console.error('Error processing webhook:', String(error));
       }
       return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
     }
