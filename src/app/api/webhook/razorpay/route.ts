@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
-import { client } from '@/lib/prisma';     // Your Prisma client
+import { razorpay } from '@/lib/razorpay'; // Razorpay client setup
+import { updateSubscription } from '@/actions/user/queries'; // Subscription update function
+import { client } from '@/lib/prisma'; // Prisma client
 
 export async function POST(request: Request) {
-  // Get the webhook body and signature
+  // Get raw body and signature for verification
   const body = await request.text();
   const signature = request.headers.get('x-razorpay-signature');
 
-  // Verify the webhook signature
+  // Verify webhook signature
   const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
   shasum.update(body);
   const digest = shasum.digest('hex');
@@ -18,54 +19,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 400, message: 'Invalid signature' });
   }
 
-  // Parse the webhook payload
+  // Parse webhook payload
   const payload = JSON.parse(body);
-  console.log('Webhook event received:', payload.event);
+  console.log('Received webhook event:', payload.event);
 
-  // Handle the payment.captured event
+  // Handle payment.captured event
   if (payload.event === 'payment.captured') {
     const payment = payload.payload.payment.entity;
     const subscriptionId = payment.subscription_id;
 
     if (!subscriptionId) {
-      console.error('No subscription_id found in payment');
+      console.error('No subscription_id in payment.captured event');
       return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
     }
 
     try {
-      // Fetch the subscription details from Razorpay
+      // Fetch subscription details from Razorpay
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      const userId = subscription.notes?.userId; // Assuming userId is stored in notes
+      console.log('Fetched subscription:', subscription);
 
-      if (!userId || typeof userId !== 'string') {
-        console.error('Invalid or missing userId in subscription notes');
+      // Extract userId from subscription notes (adjust based on your setup)
+      const userId = String(subscription.notes?.userId || '');
+
+      if (!userId) {
+        console.error('Missing userId in subscription notes');
         return NextResponse.json({ status: 400, message: 'Invalid userId' });
       }
-      console.log('User ID extracted:', userId);
 
-      // Update or create the subscription in the database
-      const updatedSubscription = await client.subscription.upsert({
-        where: { userId }, // Find by userId
-        update: {
-          plan: 'PRO', // Change to PRO
-          customerId: subscriptionId, // Store the subscription ID
-          updatedAt: new Date(),
-        },
-        create: {
-          userId,
-          plan: 'PRO', // Start as PRO if new
-          customerId: subscriptionId,
-        },
+      // Update the user's subscription
+      await updateSubscription(userId, {
+        plan: 'PRO',
+        customerId: subscriptionId,
       });
-      console.log('Subscription updated:', updatedSubscription);
 
-      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Error processing webhook:', error.message);
-      } else {
-        console.error('Error processing webhook:', String(error));
-      }
+      return NextResponse.json({ status: 200, message: 'Webhook processed' });
+    } catch (error) {
+      console.error('Error processing webhook:', error);
       return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
     }
   }
