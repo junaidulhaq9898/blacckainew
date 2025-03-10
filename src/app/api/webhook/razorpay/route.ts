@@ -1,4 +1,3 @@
-// src/app/api/webhooks/razorpay/route.ts
 import { NextResponse } from 'next/server';
 import * as crypto from 'crypto';
 import { client } from '@/lib/prisma';
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
       
       console.log('Processing subscription update for user:', userId);
 
-      // First check if the user exists
+      // Check if the user exists
       const user = await client.user.findUnique({
         where: { id: userId },
         include: { subscription: true }
@@ -63,9 +62,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ status: 404, message: 'User not found' });
       }
 
-      // Update user's subscription
+      // Update or create the subscription
       if (user.subscription) {
-        // Update existing subscription
         const updated = await client.subscription.update({
           where: { id: user.subscription.id },
           data: {
@@ -76,7 +74,6 @@ export async function POST(request: Request) {
         });
         console.log('Subscription updated:', updated);
       } else {
-        // Create new subscription
         const created = await client.subscription.create({
           data: {
             userId: userId,
@@ -90,7 +87,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
     }
 
-    // For all other events, just acknowledge receipt
     return NextResponse.json({ status: 200, message: 'Event received' });
   } catch (error: unknown) {
     if (error instanceof Error) {
