@@ -1,14 +1,39 @@
 import { NextResponse } from "next/server";
 import { client } from "@/lib/prisma";
+import crypto from "crypto";
+
+const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "";
 
 export async function POST(req: Request) {
   try {
     console.log("📩 Incoming Webhook Request");
 
-    const body = await req.json();
-    console.log("🔹 Webhook Data Received:", body);
+    // Read request body
+    const body = await req.text(); // Use `text()` instead of `json()` for signature verification
+    const signature = req.headers.get("x-razorpay-signature");
 
-    const { userId } = body;
+    if (!signature) {
+      console.log("❌ Missing Razorpay Signature.");
+      return NextResponse.json({ error: "Unauthorized request" }, { status: 401 });
+    }
+
+    // Verify Razorpay signature
+    const expectedSignature = crypto
+      .createHmac("sha256", RAZORPAY_WEBHOOK_SECRET)
+      .update(body)
+      .digest("hex");
+
+    if (signature !== expectedSignature) {
+      console.log("❌ Invalid Razorpay Signature.");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+    }
+
+    // Convert text body back to JSON
+    const data = JSON.parse(body);
+    console.log("🔹 Verified Webhook Data:", data);
+
+    // Extract userId from the webhook payload
+    const { userId } = data.payload.payment.entity.notes;
 
     if (!userId) {
       console.log("❌ No userId found in webhook payload.");
