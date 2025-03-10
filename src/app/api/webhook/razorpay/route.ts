@@ -1,41 +1,41 @@
 import { NextResponse } from "next/server";
-import { client } from "@/lib/prisma"; // Make sure this import matches your `prisma.ts`
+import { client } from "@/lib/prisma"; // Ensure correct import
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    console.log("🔹 Webhook Data Received:", body); // Debugging log
+    console.log("🔹 Webhook Data Received:", body);
 
-    const { razorpay_subscription_id, status, userId } = body;
+    const { userId } = body;
 
     if (!userId) {
+      console.log("❌ No userId found in webhook payload.");
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
     }
 
-    // Fetch the existing subscription
+    // Check if user has a subscription
     const subscription = await client.subscription.findUnique({
       where: { userId },
     });
 
     if (!subscription) {
-      console.log("❌ Subscription not found for user:", userId);
-      return NextResponse.json({ error: "Subscription not found" }, { status: 404 });
+      console.log("⚠️ Subscription not found. Creating a new one...");
+      await client.subscription.create({
+        data: {
+          userId,
+          plan: "PRO", // Use string instead of Prisma enum
+        },
+      });
+    } else {
+      console.log("✅ Subscription Found. Updating plan to PRO...");
+      await client.subscription.update({
+        where: { userId },
+        data: { plan: "PRO" }, // Use string instead of Prisma enum
+      });
     }
 
-    console.log("✅ Before Update - Subscription:", subscription);
-
-    // Determine new plan status
-    const newPlan = status === "active" ? "PRO" : "FREE";
-
-    // Update the subscription plan
-    const updatedSubscription = await client.subscription.update({
-      where: { userId },
-      data: { plan: newPlan },
-    });
-
-    console.log("✅ After Update - Subscription:", updatedSubscription);
-
-    return NextResponse.json({ message: "Subscription updated successfully", updatedSubscription });
+    console.log("✅ Subscription updated successfully for user:", userId);
+    return NextResponse.json({ message: "Subscription updated successfully" });
   } catch (error) {
     console.error("❌ Error updating subscription:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
