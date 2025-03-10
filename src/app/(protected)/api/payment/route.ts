@@ -1,7 +1,8 @@
+// src/app/api/payment/route.ts
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { getUserByClerkId } from '@/actions/user/queries';
-import { razorpay } from '@/lib/razorpay'; // Razorpay client setup
+import { client } from '@/lib/prisma';
+import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   // Get the authenticated Clerk user
@@ -11,7 +12,10 @@ export async function POST(request: Request) {
   }
 
   // Fetch the database user using Clerk's user ID
-  const dbUser = await getUserByClerkId(clerkUser.id);
+  const dbUser = await client.user.findUnique({
+    where: { clerkId: clerkUser.id }
+  });
+  
   if (!dbUser) {
     return NextResponse.json({ status: 404, message: 'User not found' });
   }
@@ -23,28 +27,39 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Create a Razorpay subscription with userId in notes
+    // Create a subscription first
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: 1,
-      total_count: 12,
-      notes: { userId: dbUser.id }, // Store the UUID from your database
+      total_count: 12, // 12 months
+      notes: { 
+        userId: dbUser.id, // Important: Store the UUID from your database
+        userEmail: dbUser.email
+      }
     });
 
-    // Create a payment link for the subscription
+    console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
+
+    // Create a payment link for the initial payment
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // Amount in paise (e.g., 500 INR = 50000 paise)
+      amount: 50000, // Amount in paise
       currency: 'INR',
       description: 'Upgrade to PRO Plan',
-      customer: { email: dbUser.email },
-      callback_url: `https://www.blacckai.com/payment-success?subscription_id=${subscription.id}`,
+      customer: { 
+        email: dbUser.email,
+        name: dbUser.firstname || 'User' 
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
-      notes: { userId: dbUser.id }, // Also store userId in payment link notes
+      notes: { 
+        userId: dbUser.id,
+        subscriptionId: subscription.id
+      }
     });
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url, // Redirect user to this URL
+      session_url: paymentLink.short_url,
     });
   } catch (error: unknown) {
     if (error instanceof Error) {
