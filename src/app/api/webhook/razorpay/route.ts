@@ -1,29 +1,24 @@
-import { NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { client } from "@/lib/prisma";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const { userId, paymentStatus } = body;
 
-    // ✅ Extract userId from webhook payload
-    const userId = body.payload?.user_id; // Ensure this matches Razorpay's actual webhook data structure
-
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+    if (!userId || paymentStatus !== "success") {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
     }
 
-    // ✅ Ensure userId is a string to prevent Prisma errors
-    const userIdStr = String(userId);
-
-    // ✅ Update the user's subscription plan from FREE → PRO
-    const updatedSubscription = await prisma.subscription.update({
-      where: { userId: userIdStr },
-      data: { plan: "PRO" }, // Ensure this matches your Prisma ENUM
+    // Update subscription to "Pro" if payment is successful
+    await client.subscription.update({
+      where: { userId },
+      data: { plan: "PRO" },
     });
 
-    return NextResponse.json({ success: true, updatedSubscription });
+    return NextResponse.json({ message: "Subscription updated to Pro" }, { status: 200 });
   } catch (error) {
-    console.error("❌ Error updating subscription:", error);
+    console.error("Error processing Razorpay webhook:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
