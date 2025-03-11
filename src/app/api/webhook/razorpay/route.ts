@@ -62,26 +62,32 @@ export async function POST(request: Request) {
         return NextResponse.json({ status: 404, message: 'User not found' });
       }
 
-      // Update or create the subscription
-      if (user.subscription) {
-        const updated = await client.subscription.update({
-          where: { id: user.subscription.id },
-          data: {
-            plan: 'PRO',
-            customerId: subscriptionId,
-            updatedAt: new Date()
-          }
-        });
-        console.log('Subscription updated:', updated);
-      } else {
-        const created = await client.subscription.create({
-          data: {
-            userId: userId,
-            plan: 'PRO',
-            customerId: subscriptionId
-          }
-        });
-        console.log('Subscription created:', created);
+      // Verify subscription exists (should always be true due to sign-up logic)
+      if (!user.subscription) {
+        console.error('Subscription not found for user:', userId);
+        return NextResponse.json({ status: 500, message: 'Subscription missing unexpectedly' });
+      }
+
+      // Log current plan before update
+      console.log('Current subscription plan:', user.subscription.plan);
+
+      // Update the subscription using userId (unique)
+      const updated = await client.subscription.update({
+        where: { userId: userId },
+        data: {
+          plan: 'PRO',
+          customerId: subscriptionId,
+          updatedAt: new Date()
+        }
+      });
+
+      // Log updated subscription
+      console.log('Subscription updated:', updated);
+
+      // Verify the update
+      if (updated.plan !== 'PRO') {
+        console.error('Plan failed to update to PRO:', updated);
+        return NextResponse.json({ status: 500, message: 'Plan update failed' });
       }
 
       return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
