@@ -6,7 +6,7 @@ import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
 
 export async function POST(request: Request) {
   try {
-    // Step 1: Get and verify the webhook signature
+    // Step 1: Verify the webhook signature
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
 
@@ -50,16 +50,21 @@ export async function POST(request: Request) {
       console.log('Found userId:', userId);
 
       // Step 5: Update the subscription in the database
-      const updatedSubscription = await client.subscription.update({
-        where: { userId: userId },
-        data: { 
-          plan: 'PRO',
-          customerId: subscriptionId,
-          updatedAt: new Date()
-        },
-      });
+      try {
+        const updatedSubscription = await client.subscription.update({
+          where: { userId: userId },
+          data: { 
+            plan: 'PRO',
+            customerId: subscriptionId,
+            updatedAt: new Date(),
+          },
+        });
+        console.log('Subscription updated successfully:', updatedSubscription);
+      } catch (updateError) {
+        console.error('Failed to update subscription:', updateError);
+        return NextResponse.json({ status: 500, message: 'Failed to update subscription' });
+      }
 
-      console.log('Subscription updated successfully:', updatedSubscription);
       return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
     }
 
