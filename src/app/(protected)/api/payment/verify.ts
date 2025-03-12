@@ -1,68 +1,19 @@
 import { NextResponse } from 'next/server';
-import { razorpay } from '@/lib/razorpay';
-import { client } from '@/lib/prisma';
+import crypto from 'crypto';
 
-// UUID validation regex
-const isValidUUID = (id: string) => 
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+export async function POST(request: Request) {
+  const body = await request.json();
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
 
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const subscriptionId = searchParams.get('subscription_id');
-    
-    // Validate subscription ID exists
-    if (!subscriptionId) {
-      return NextResponse.json(
-        { success: false, error: 'Missing subscription ID' },
-        { status: 400 }
-      );
-    }
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!);
+  shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+  const digest = shasum.digest('hex');
 
-    // Fetch subscription details
-    const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-    
-    // Validate subscription notes and user ID
-    if (!subscription.notes?.userId) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid subscription data' },
-        { status: 400 }
-      );
-    }
-
-    // Convert and validate user ID format
-    const userId = String(subscription.notes.userId);
-    if (!isValidUUID(userId)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid user ID format' },
-        { status: 400 }
-      );
-    }
-
-    // Update subscription plan
-    await client.subscription.upsert({
-      where: { userId },
-      update: { plan: 'PRO' },
-      create: {
-        userId,
-        plan: 'PRO'
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      plan: 'PRO'
-    });
-
-  } catch (error: any) {
-    console.error('Verification error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error?.message || 'Payment verification failed',
-        plan: 'FREE'
-      },
-      { status: 500 }
-    );
+  if (digest === razorpay_signature) {
+    // Payment is verified
+    return NextResponse.json({ status: 200, message: 'Payment verified' });
+  } else {
+    // Payment verification failed
+    return NextResponse.json({ status: 400, message: 'Invalid signature' });
   }
 }

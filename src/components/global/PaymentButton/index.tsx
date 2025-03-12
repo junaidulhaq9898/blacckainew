@@ -1,35 +1,36 @@
+// components/PaymentButton.tsx
 'use client';
 
 import { useState } from 'react';
 
-const PaymentButton = () => {
+export default function PaymentButton() {
   const [loading, setLoading] = useState(false);
 
   const handlePayment = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/(protected)/payment', { method: 'POST' });
+      const res = await fetch('/api/payment', { method: 'POST' });
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.message || 'Payment failed');
-      window.location.href = data.url;
+      if (res.status !== 200) {
+        console.error('Payment initiation failed:', data.message);
+        alert('Failed to start payment. Please try again.');
+        return;
+      }
+
+      // Redirect to Razorpay checkout page
+      window.location.href = data.session_url;
     } catch (error) {
       console.error('Payment error:', error);
-      alert(error instanceof Error ? error.message : 'Payment failed');
+      alert('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <button 
-      onClick={handlePayment} 
-      disabled={loading}
-      className="bg-blue-600 text-white px-6 py-2 rounded-lg disabled:opacity-50"
-    >
+    <button onClick={handlePayment} disabled={loading}>
       {loading ? 'Processing...' : 'Upgrade to PRO'}
     </button>
   );
-};
-
-export default PaymentButton;
+}
