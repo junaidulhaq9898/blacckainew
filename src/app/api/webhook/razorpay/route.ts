@@ -1,3 +1,4 @@
+// src/app/api/razorpay/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { client } from '@/lib/prisma';
@@ -5,12 +6,12 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // Read raw request body for signature verification
+    // Read the raw request body as text (needed for signature verification)
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET!;
     const digest = crypto.createHmac('sha256', secret).update(body).digest('hex');
-    
+
     if (signature !== digest) {
       console.error('Invalid signature:', { signature, digest });
       return new NextResponse('Invalid signature', { status: 401 });
@@ -19,23 +20,22 @@ export async function POST(request: Request) {
     const payload = JSON.parse(body);
     console.log('Razorpay webhook payload:', JSON.stringify(payload, null, 2));
 
-    // Process payment captured event
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
       const subscriptionId = payment.subscription_id;
       
-      // Fetch subscription details from Razorpay
+      // Fetch the subscription details from Razorpay
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // Retrieve the user ID from subscription notes (as set in subscription creation)
-      const userId = subscription.notes.user_id;
+      // Safely access the user_id from subscription notes and convert to string if needed
+      const userId = subscription.notes?.user_id ? String(subscription.notes.user_id) : '';
       if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
         console.error('Invalid user ID in subscription notes:', userId);
         return new NextResponse('Invalid user ID', { status: 400 });
       }
 
-      // Update the subscription plan to 'PRO' in your database
+      // Update the subscription in your database to switch the plan to 'PRO'
       const updated = await client.subscription.updateMany({
         where: { customerId: subscriptionId },
         data: { plan: 'PRO' }
