@@ -12,10 +12,10 @@ export async function POST() {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // Get database user
+    // Fetch database user
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
-      select: { id: true, email: true }
+      select: { id: true, email: true, firstname: true }
     });
 
     if (!dbUser) {
@@ -28,14 +28,30 @@ export async function POST() {
       return NextResponse.json({ status: 500, message: 'Server error' });
     }
 
-    // Create Razorpay subscription (only documented parameters)
+    // Create Razorpay subscription with valid parameters
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12,
-      customer_notify: 1
+      customer_notify: 1,
+      notes: {
+        user_id: dbUser.id // Razorpay requires snake_case for custom notes
+      }
     });
 
-    // Store subscription in database
+    // Create payment link with valid parameters
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: 50000,
+      currency: 'INR',
+      description: 'PRO Plan Upgrade',
+      subscription_id: subscription.id,
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'Customer'
+      }
+    });
+
+    // Upsert subscription record
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -43,19 +59,6 @@ export async function POST() {
         userId: dbUser.id,
         customerId: subscription.id,
         plan: 'FREE'
-      }
-    });
-
-    // Create payment link (only documented parameters)
-    const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000,
-      currency: 'INR',
-      description: 'PRO Plan',
-      subscription_id: subscription.id,
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
-      customer: {
-        email: dbUser.email,
-        name: "Customer"
       }
     });
 
@@ -68,7 +71,7 @@ export async function POST() {
     console.error('Payment error:', error);
     return NextResponse.json({
       status: 500,
-      message: 'Payment initialization failed'
+      message: error instanceof Error ? error.message : 'Payment failed'
     });
   }
 }
