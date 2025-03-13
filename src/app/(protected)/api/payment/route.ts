@@ -1,4 +1,3 @@
-// src/app/api/payment/route.ts
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
@@ -6,39 +5,42 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
-    // Authentication check
+    // 1. Authentication check via Clerk
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // Look up the database user based on Clerk ID
+    // 2. Look up the user in the database.
+    // Remove "slug" because it is not defined in your Prisma schema.
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
-      select: { id: true, email: true, firstname: true }
+      select: { id: true, email: true, firstname: true, lastname: true }
     });
+
     if (!dbUser) {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // Validate Razorpay plan id from environment
+    // 3. Validate Razorpay plan id
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
       console.error('RAZORPAY_PLAN_ID missing');
       return NextResponse.json({ status: 500, message: 'Server error' });
     }
 
-    // Create a Razorpay subscription
+    // 4. Create Razorpay subscription (do not include extra fields such as amount)
     const razorpaySubscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12,             // e.g. 12 billing cycles
-      customer_notify: 1,          // Notify customer via SMS/email
-      notes: { 
-        user_id: dbUser.id        // Use snake_case key as required by Razorpay
+      total_count: 12,             // For example, 12 billing cycles
+      customer_notify: 1,          // Notify the customer
+      notes: {
+        user_id: dbUser.id         // Using snake_case key as required by Razorpay
       }
     });
 
-    // Upsert the subscription in your database and mark it as PRO
+    // 5. Store or update the subscription in the database,
+    //    and update the plan to 'PRO'
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: razorpaySubscription.id, plan: 'PRO' },
@@ -49,8 +51,8 @@ export async function POST() {
       }
     });
 
-    // Create a payment link.
-    // IMPORTANT: When using subscription_id, do NOT send the 'amount' field.
+    // 6. Create a payment link.
+    // When using subscription_id, do not pass an "amount" field.
     const paymentLink = await razorpay.paymentLink.create({
       currency: 'INR',
       description: 'PRO Plan Subscription',
@@ -58,6 +60,7 @@ export async function POST() {
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
       customer: {
         email: dbUser.email,
+        // Use firstname as fallback for name
         name: dbUser.firstname || 'Customer'
       }
     });

@@ -1,4 +1,5 @@
 // src/app/api/razorpay/route.ts
+
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { client } from '@/lib/prisma';
@@ -6,7 +7,7 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // Read the raw request body
+    // Read the raw request body as text
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET!;
@@ -24,18 +25,23 @@ export async function POST(request: Request) {
       const payment = payload.payload.payment.entity;
       const subscriptionId = payment.subscription_id;
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      const userId = subscription.notes.user_id; // Must match what you set in subscription creation
+      console.log('Fetched subscription:', subscription);
+
+      // Retrieve the user id from subscription notes (ensure you set this correctly on creation)
+      const userId = subscription.notes.user_id;
 
       if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
+        console.error('Invalid user ID in subscription notes:', userId);
         return new NextResponse('Invalid user ID', { status: 400 });
       }
 
-      await client.subscription.updateMany({
+      // Update the subscription in your database to switch the plan to 'PRO'
+      const updated = await client.subscription.updateMany({
         where: { customerId: subscriptionId },
         data: { plan: 'PRO' }
       });
 
-      console.log(`Upgraded user ${userId} to PRO plan`);
+      console.log(`Upgraded user ${userId} to PRO plan. Update result:`, updated);
       return NextResponse.json({ success: true });
     }
 
