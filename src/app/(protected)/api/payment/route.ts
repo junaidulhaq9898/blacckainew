@@ -32,8 +32,11 @@ export async function POST() {
     // Create Razorpay subscription with valid parameters
     const razorpaySubscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12, // 1 year
-      notes: { userId: dbUser.id } // Valid notes format
+      total_count: 12, // Valid parameter
+      customer_notify: 1, // Valid parameter
+      notes: { // Valid notes format
+        user_id: dbUser.id // Razorpay requires snake_case keys
+      }
     });
 
     // Store subscription in database
@@ -47,15 +50,17 @@ export async function POST() {
       }
     });
 
-    // Create payment link with customer_notify
+    // Create payment link with valid parameters
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // ₹500 in paise
-      currency: 'INR',
+      amount: 50000, // Required
+      currency: 'INR', // Required
       description: 'PRO Plan Subscription',
-      subscription_id: razorpaySubscription.id,
+      subscription_id: razorpaySubscription.id, // Valid parameter
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
-      customer_notify: 1, // Correct placement
-      notes: { userId: dbUser.id }
+      customer: { // Valid customer object
+        email: dbUser.email,
+        name: dbUser.firstname || 'Customer'
+      }
     });
 
     return NextResponse.json({
