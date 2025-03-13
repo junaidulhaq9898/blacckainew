@@ -29,34 +29,32 @@ export async function POST() {
       return NextResponse.json({ status: 500, message: 'Server error' });
     }
 
-    // Create Razorpay subscription
+    // Create Razorpay subscription with valid parameters
     const razorpaySubscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // 1 year
-      customer_notify: 1,
-      notes: { userId: dbUser.id }
+      notes: { userId: dbUser.id } // Valid notes format
     });
 
     // Store subscription in database
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: {
-        customerId: razorpaySubscription.id // Only update customer ID
-      },
+      update: { customerId: razorpaySubscription.id },
       create: {
         userId: dbUser.id,
         customerId: razorpaySubscription.id,
-        plan: 'FREE' // Initial state only for new records
+        plan: 'FREE'
       }
     });
 
-    // Create payment link
+    // Create payment link with customer_notify
     const paymentLink = await razorpay.paymentLink.create({
       amount: 50000, // ₹500 in paise
       currency: 'INR',
       description: 'PRO Plan Subscription',
       subscription_id: razorpaySubscription.id,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
+      customer_notify: 1, // Correct placement
       notes: { userId: dbUser.id }
     });
 
@@ -66,7 +64,7 @@ export async function POST() {
     });
 
   } catch (error) {
-    console.error('Payment initiation failed:', error);
+    console.error('Payment error:', error);
     return NextResponse.json({
       status: 500,
       message: error instanceof Error ? error.message : 'Payment failed'
