@@ -11,15 +11,14 @@ export default function PaymentSuccess() {
 
   useEffect(() => {
     if (user) {
-      // Fetch the username from Clerk's user object
-      // Adjust this if your username is stored in a different field (e.g., user.firstName)
+      // Fetch username from Clerk's user object (adjust based on your setup)
       const username = user.username;
       if (username) {
-        // Redirect to the dashboard with the username and payment success status
+        // Redirect to dashboard with username in URL path
         router.replace(`/dashboard/${username}?status=payment_success`);
       } else {
         console.error('Username not found');
-        // Fallback redirect if username is unavailable
+        // Fallback redirect without username (if username is unavailable)
         router.replace('/dashboard?status=payment_success');
       }
     }
