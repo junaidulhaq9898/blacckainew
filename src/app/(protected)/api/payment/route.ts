@@ -1,71 +1,76 @@
+// src/app/api/payment/route.ts
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
 import { razorpay } from '@/lib/razorpay';
 
-export async function POST(request: Request) {
-  // Get the authenticated Clerk user
-  const clerkUser = await currentUser();
-  if (!clerkUser) {
-    return NextResponse.json({ status: 401, message: 'Unauthorized' });
-  }
-
-  // Fetch the database user using Clerk's user ID
-  const dbUser = await client.user.findUnique({
-    where: { clerkId: clerkUser.id }
-  });
-  
-  if (!dbUser) {
-    return NextResponse.json({ status: 404, message: 'User not found' });
-  }
-
-  const planId = process.env.RAZORPAY_PLAN_ID;
-  if (!planId) {
-    console.error('RAZORPAY_PLAN_ID is not set');
-    return NextResponse.json({ status: 500, message: 'Server configuration error' });
-  }
-
+export async function POST() {
   try {
-    // Create a subscription first
-    const subscription = await razorpay.subscriptions.create({
+    // Authentication check
+    const clerkUser = await currentUser();
+    if (!clerkUser) {
+      return NextResponse.json({ status: 401, message: 'Unauthorized' });
+    }
+
+    // Look up the database user based on Clerk ID
+    const dbUser = await client.user.findUnique({
+      where: { clerkId: clerkUser.id },
+      select: { id: true, email: true, firstname: true }
+    });
+    if (!dbUser) {
+      return NextResponse.json({ status: 404, message: 'User not found' });
+    }
+
+    // Validate Razorpay plan id from environment
+    const planId = process.env.RAZORPAY_PLAN_ID;
+    if (!planId) {
+      console.error('RAZORPAY_PLAN_ID missing');
+      return NextResponse.json({ status: 500, message: 'Server error' });
+    }
+
+    // Create a Razorpay subscription
+    const razorpaySubscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      customer_notify: 1,
-      total_count: 12, // 12 months
+      total_count: 12,             // e.g. 12 billing cycles
+      customer_notify: 1,          // Notify customer via SMS/email
       notes: { 
-        userId: dbUser.id, // Important: Store the UUID from your database
-        userEmail: dbUser.email
+        user_id: dbUser.id        // Use snake_case key as required by Razorpay
       }
     });
 
-    console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
-
-    // Create a payment link for the initial payment
-    const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // Amount in paise
-      currency: 'INR',
-      description: 'Upgrade to PRO Plan',
-      customer: { 
-        email: dbUser.email,
-        name: dbUser.firstname || 'User' 
-      },
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
-      callback_method: 'get',
-      notes: { 
+    // Upsert the subscription in your database and mark it as PRO
+    await client.subscription.upsert({
+      where: { userId: dbUser.id },
+      update: { customerId: razorpaySubscription.id, plan: 'PRO' },
+      create: {
         userId: dbUser.id,
-        subscriptionId: subscription.id
+        customerId: razorpaySubscription.id,
+        plan: 'PRO'
+      }
+    });
+
+    // Create a payment link.
+    // IMPORTANT: When using subscription_id, do NOT send the 'amount' field.
+    const paymentLink = await razorpay.paymentLink.create({
+      currency: 'INR',
+      description: 'PRO Plan Subscription',
+      subscription_id: razorpaySubscription.id,
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'Customer'
       }
     });
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url,
+      session_url: paymentLink.short_url
     });
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error('Payment link creation error:', error.message);
-    } else {
-      console.error('Payment link creation error:', String(error));
-    }
-    return NextResponse.json({ status: 500, message: 'Failed to initiate payment' });
+  } catch (error) {
+    console.error('Payment error:', error);
+    return NextResponse.json({
+      status: 500,
+      message: error instanceof Error ? error.message : 'Payment failed'
+    });
   }
 }
