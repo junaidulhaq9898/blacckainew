@@ -12,7 +12,7 @@ export async function POST() {
 
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
-      select: { id: true, email: true, firstname: true }
+      select: { id: true, email: true, firstname: true },
     });
     if (!dbUser) {
       return NextResponse.json({ status: 404, message: 'User not found' });
@@ -20,50 +20,49 @@ export async function POST() {
 
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
-      console.error('RAZORPAY_PLAN_ID missing');
-      return NextResponse.json({ status: 500, message: 'Server error' });
+      console.error('RAZORPAY_PLAN_ID is missing');
+      return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
+    // Create Razorpay subscription
     const razorpaySubscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12,
+      total_count: 12, // Adjust as per your subscription cycle
       customer_notify: 1,
-      notes: { 
-        user_id: dbUser.id
-      }
+      notes: { user_id: dbUser.id },
     });
 
-    // Store the subscription but keep the plan as "FREE" until payment is confirmed
+    // Store subscription in DB, keeping plan as "FREE" until payment is confirmed
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: razorpaySubscription.id },
       create: {
         userId: dbUser.id,
         customerId: razorpaySubscription.id,
-        plan: 'FREE' // Default plan until payment is captured
-      }
+        plan: 'FREE', // Do NOT set to "PRO" here
+      },
     });
 
-    // Create payment link without currency
+    // Create payment link (no currency field)
     const paymentLink = await razorpay.paymentLink.create({
       description: 'PRO Plan Subscription',
       subscription_id: razorpaySubscription.id,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success`,
       customer: {
         email: dbUser.email,
-        name: dbUser.firstname || 'Customer'
-      }
+        name: dbUser.firstname || 'Customer',
+      },
     });
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url
+      session_url: paymentLink.short_url,
     });
   } catch (error) {
-    console.error('Payment error:', error);
+    console.error('Payment initiation error:', error);
     return NextResponse.json({
       status: 500,
-      message: error instanceof Error ? error.message : 'Payment failed'
+      message: error instanceof Error ? error.message : 'Payment initiation failed',
     });
   }
 }
