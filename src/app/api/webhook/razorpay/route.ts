@@ -1,52 +1,76 @@
-// src/app/api/razorpay/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay';
+import { client } from '@/lib/prisma'; // Your Prisma client
+import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
 
 export async function POST(request: Request) {
   try {
-    // Read the raw request body as text (needed for signature verification)
+    // Step 1: Verify the webhook signature
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET!;
-    const digest = crypto.createHmac('sha256', secret).update(body).digest('hex');
 
-    if (signature !== digest) {
-      console.error('Invalid signature:', { signature, digest });
-      return new NextResponse('Invalid signature', { status: 401 });
+    if (!signature) {
+      console.error('No signature provided');
+      return NextResponse.json({ status: 400, message: 'Missing signature' });
     }
 
-    const payload = JSON.parse(body);
-    console.log('Razorpay webhook payload:', JSON.stringify(payload, null, 2));
+    const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
+    shasum.update(body);
+    const digest = shasum.digest('hex');
 
+    if (digest !== signature) {
+      console.error('Invalid signature');
+      return NextResponse.json({ status: 400, message: 'Invalid signature' });
+    }
+
+    // Step 2: Parse the webhook payload
+    const payload = JSON.parse(body);
+    console.log('Webhook event received:', payload.event);
+
+    // Step 3: Handle the payment.captured event
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
       const subscriptionId = payment.subscription_id;
-      
-      // Fetch the subscription details from Razorpay
-      const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      console.log('Fetched subscription:', subscription);
 
-      // Safely access the user_id from subscription notes and convert to string if needed
-      const userId = subscription.notes?.user_id ? String(subscription.notes.user_id) : '';
-      if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
-        console.error('Invalid user ID in subscription notes:', userId);
-        return new NextResponse('Invalid user ID', { status: 400 });
+      if (!subscriptionId) {
+        console.error('No subscription ID in payment:', payment);
+        return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
       }
 
-      // Update the subscription in your database to switch the plan to 'PRO'
-      const updated = await client.subscription.updateMany({
-        where: { customerId: subscriptionId },
-        data: { plan: 'PRO' }
-      });
-      console.log(`Upgraded user ${userId} to PRO plan. Update result:`, updated);
-      return NextResponse.json({ success: true });
+      // Step 4: Fetch subscription details from Razorpay
+      const subscription = await razorpay.subscriptions.fetch(subscriptionId);
+      const userId = subscription.notes?.userId;
+
+      if (!userId || typeof userId !== 'string') {
+        console.error('Invalid or missing userId in subscription notes:', subscription.notes);
+        return NextResponse.json({ status: 400, message: 'Invalid userId' });
+      }
+
+      console.log('Found userId:', userId);
+
+      // Step 5: Update the subscription in the database
+      try {
+        const updatedSubscription = await client.subscription.update({
+          where: { userId: userId },
+          data: { 
+            plan: 'PRO',
+            customerId: subscriptionId,
+            updatedAt: new Date(),
+          },
+        });
+        console.log('Subscription updated successfully:', updatedSubscription);
+      } catch (updateError) {
+        console.error('Failed to update subscription:', updateError);
+        return NextResponse.json({ status: 500, message: 'Failed to update subscription' });
+      }
+
+      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
     }
 
-    return NextResponse.json({ status: 200 });
+    // Ignore other events
+    return NextResponse.json({ status: 200, message: 'Event received but not processed' });
   } catch (error) {
-    console.error('Webhook error:', error);
-    return new NextResponse('Server error', { status: 500 });
+    console.error('Webhook processing failed:', error);
+    return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
   }
 }
