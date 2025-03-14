@@ -5,57 +5,59 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // 1. Read the raw request body
+    // 1. Read the raw request body as text for signature verification.
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
-
     if (!signature) {
+      console.error('No signature provided');
       return NextResponse.json({ status: 400, message: 'Missing signature' });
     }
 
-    // 2. Verify Razorpay signature
     const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
     shasum.update(body);
     const digest = shasum.digest('hex');
 
     if (digest !== signature) {
+      console.error('Invalid signature');
       return NextResponse.json({ status: 400, message: 'Invalid signature' });
     }
 
-    // 3. Parse Webhook Payload
+    // 2. Parse the webhook payload.
     const payload = JSON.parse(body);
-    console.log('Webhook event:', payload.event);
+    console.log('Webhook event received:', payload.event);
 
+    // 3. Handle the payment.captured event.
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
       const subscriptionId = payment.subscription_id;
-
       if (!subscriptionId) {
+        console.error('No subscription ID in payment:', payment);
         return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
       }
 
-      // 4. Fetch Subscription from Razorpay
+      // 4. Fetch subscription details from Razorpay.
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // 5. Extract userId from Subscription notes
-      const userId = subscription.notes?.user_id;
-      if (!userId) {
+      // 5. Extract the user_id from subscription notes.
+      const userId = subscription.notes?.user_id ? String(subscription.notes.user_id) : '';
+      if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
+        console.error('Invalid or missing userId in subscription notes:', subscription.notes);
         return NextResponse.json({ status: 400, message: 'Invalid userId' });
       }
 
-      console.log('User ID:', userId);
+      console.log('Found userId:', userId);
 
-      // 6. Update the Subscription in Database
-      await client.subscription.update({
-        where: { userId },
+      // 6. Update the subscription in the database to set the plan to PRO.
+      const updatedSubscription = await client.subscription.update({
+        where: { userId: userId },
         data: { plan: 'PRO', customerId: subscriptionId, updatedAt: new Date() },
       });
-
-      return NextResponse.json({ status: 200, message: 'Subscription upgraded to PRO' });
+      console.log('Subscription updated successfully:', updatedSubscription);
+      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
     }
 
-    return NextResponse.json({ status: 200, message: 'Webhook event processed' });
+    return NextResponse.json({ status: 200, message: 'Event received but not processed' });
   } catch (error) {
     console.error('Webhook processing failed:', error);
     return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
