@@ -5,7 +5,7 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // 1. Read the raw request body as text (for signature verification)
+    // 1. Read the raw request body for signature verification.
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     if (!signature) {
@@ -37,17 +37,18 @@ export async function POST(request: Request) {
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // 5. Extract userId from subscription notes (ensure it's a string).
-      const userId = subscription.notes?.user_id ? String(subscription.notes.user_id) : '';
+      // 5. Extract userId from subscription notes.
+      // (Make sure the key "userId" is used when creating the subscription.)
+      const userId = subscription.notes?.userId ? String(subscription.notes.userId) : '';
       if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
         console.error('Invalid or missing userId in subscription notes:', subscription.notes);
         return NextResponse.json({ status: 400, message: 'Invalid userId' });
       }
       console.log('Found userId:', userId);
 
-      // 6. Update the subscription in your database to switch the plan to PRO.
+      // 6. Update the subscription in the database to switch the plan to PRO.
       const updatedSubscription = await client.subscription.update({
-        where: { userId },
+        where: { userId: userId },
         data: { plan: 'PRO', customerId: subscriptionId, updatedAt: new Date() }
       });
       console.log('Subscription updated successfully:', updatedSubscription);
