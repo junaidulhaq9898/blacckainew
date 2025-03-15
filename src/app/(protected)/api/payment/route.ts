@@ -42,8 +42,8 @@ export async function POST() {
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
     // 5. Upsert the subscription in your database.
-    // We store the subscription with plan still set to 'FREE'
-    // and let the webhook later update the plan to 'PRO' after successful payment.
+    // Here we store the subscription with the plan still set to 'FREE'
+    // and later (via webhook) it will be updated to 'PRO' upon successful payment.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id, updatedAt: new Date() },
@@ -55,10 +55,9 @@ export async function POST() {
     });
 
     // 6. Create a payment link for the initial payment.
-    // This code uses the old working payment link approach that includes
-    // fields like amount, currency, customer details, callback_url, etc.
+    // Note: We set the amount to 400 (i.e., ₹4.00) instead of 50000.
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 50000, // Amount in paise (₹500.00)
+      amount: 400, // Amount in paise (₹4.00)
       currency: 'INR',
       description: 'Upgrade to PRO Plan',
       customer: {
