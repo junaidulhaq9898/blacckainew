@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       console.log('Fetched subscription:', subscription);
 
       // 5. Extract userId from subscription notes.
-      // (Make sure the key "userId" is used when creating the subscription.)
+      // (Ensure the key is exactly "userId" as used in subscription creation.)
       const userId = subscription.notes?.userId ? String(subscription.notes.userId) : '';
       if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
         console.error('Invalid or missing userId in subscription notes:', subscription.notes);
@@ -46,9 +46,9 @@ export async function POST(request: Request) {
       }
       console.log('Found userId:', userId);
 
-      // 6. Update the subscription in the database to switch the plan to PRO.
+      // 6. Update the subscription in your database to switch the plan to PRO.
       const updatedSubscription = await client.subscription.update({
-        where: { userId: userId },
+        where: { userId },
         data: { plan: 'PRO', customerId: subscriptionId, updatedAt: new Date() }
       });
       console.log('Subscription updated successfully:', updatedSubscription);
