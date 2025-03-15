@@ -13,7 +13,6 @@ export async function POST() {
     }
 
     // 2. Retrieve the user from your database.
-    // (Your Prisma User model contains id, email, and firstname.)
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true }
@@ -30,7 +29,7 @@ export async function POST() {
     }
 
     // 4. Create a Razorpay subscription.
-    // Use snake_case keys as required by Razorpay.
+    // Use snake_case keys exactly as required.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // e.g., 12 billing cycles (months)
@@ -42,39 +41,42 @@ export async function POST() {
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert the subscription in your database and mark the plan as PRO.
+    // 5. Upsert the subscription in your database.
+    // We store the subscription with plan still set to 'FREE'
+    // and let the webhook later update the plan to 'PRO' after successful payment.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id, plan: 'PRO', updatedAt: new Date() },
+      update: { customerId: subscription.id, updatedAt: new Date() },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'PRO'
+        plan: 'FREE'
       }
     });
 
-    // 6. Create a payment link for the subscription.
-    // IMPORTANT: In subscription mode, DO NOT include extra fields like amount, currency, or customer.
-    const paymentLinkResponse = await axios.post(
-      'https://api.razorpay.com/v1/payment_links',
-      {
-        description: 'Upgrade to PRO Plan',
-        subscription_id: subscription.id,
-        callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`
+    // 6. Create a payment link for the initial payment.
+    // This code uses the old working payment link approach that includes
+    // fields like amount, currency, customer details, callback_url, etc.
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: 50000, // Amount in paise (₹500.00)
+      currency: 'INR',
+      description: 'Upgrade to PRO Plan',
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'User'
       },
-      {
-        auth: {
-          username: process.env.RAZORPAY_KEY_ID!,
-          password: process.env.RAZORPAY_KEY_SECRET!,
-        },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
+      callback_method: 'get',
+      notes: {
+        userId: dbUser.id,
+        subscriptionId: subscription.id
       }
-    );
-    const link = paymentLinkResponse.data;
-    console.log('Payment link created:', link.short_url);
+    });
+    console.log('Payment link created:', paymentLink.short_url);
 
     return NextResponse.json({
       status: 200,
-      session_url: link.short_url,
+      session_url: paymentLink.short_url,
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
