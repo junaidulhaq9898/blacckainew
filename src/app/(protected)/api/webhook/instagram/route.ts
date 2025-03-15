@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
 
           // Generate AI response with full history
           const smart_ai_message = await openai.chat.completions.create({
-            model: 'rekaai/reka-flash-3:free',
+            model: 'google/gemma-3-27b-it:free',
             messages: [
               {
                 role: 'system',
