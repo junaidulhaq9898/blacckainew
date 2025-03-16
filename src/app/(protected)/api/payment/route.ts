@@ -5,13 +5,13 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
-    // 1. Authenticate user via Clerk.
+    // 1. Authenticate user via Clerk
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // 2. Retrieve the user from your database.
+    // 2. Retrieve user from database
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true }
@@ -20,17 +20,17 @@ export async function POST() {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // 3. Validate Razorpay plan ID.
+    // 3. Validate Razorpay plan ID
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
       console.error('RAZORPAY_PLAN_ID missing');
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // 4. Create a Razorpay subscription.
+    // 4. Create a Razorpay subscription
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12, // e.g., 12 months
+      total_count: 12, // e.g., 12 billing cycles
       customer_notify: 1,
       notes: {
         userId: dbUser.id,
@@ -39,24 +39,21 @@ export async function POST() {
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert the subscription in your database WITHOUT setting plan to 'PRO'.
+    // 5. Upsert subscription in database (plan stays 'FREE' until payment is confirmed)
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE' // Keep as 'FREE' until payment is confirmed
+        plan: 'FREE' // Will be updated to 'PRO' via webhook after payment
       }
     });
 
-    // 6. Return the subscription ID or a link for authentication.
-    // Razorpay will handle the payment flow based on the plan_id.
+    // 6. Return the subscription short_url for payment
     return NextResponse.json({
       status: 200,
-      subscription_id: subscription.id,
-      // Optionally, redirect to Razorpay's hosted checkout:
-      session_url: `https://api.razorpay.com/v1/subscriptions/${subscription.id}/authenticate`
+      session_url: subscription.short_url // Redirect user to this URL
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
