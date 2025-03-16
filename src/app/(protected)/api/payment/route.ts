@@ -1,9 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay'; // Your Razorpay instance
+import Razorpay from 'razorpay';
 
-export async function POST() {
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
+
+// Define the Razorpay Payment Link type
+interface RazorpayPaymentLink {
+  short_url: string;
+}
+
+export async function POST(req: NextRequest) {
   try {
     const clerkUser = await currentUser();
     if (!clerkUser) {
@@ -18,15 +28,19 @@ export async function POST() {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // Create a Razorpay subscription
+    const planId = process.env.RAZORPAY_PLAN_ID;
+    if (!planId) {
+      console.error('RAZORPAY_PLAN_ID is missing');
+      return NextResponse.json({ status: 500, message: 'Server configuration error' });
+    }
+
     const subscription = await razorpay.subscriptions.create({
-      plan_id: process.env.RAZORPAY_PLAN_ID, // Set in .env
-      total_count: 12, // e.g., 12 months
+      plan_id: planId,
+      total_count: 12,
       customer_notify: 1,
       notes: { userId: dbUser.id },
     });
 
-    // Store subscription in DB (plan stays FREE until payment)
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -37,24 +51,38 @@ export async function POST() {
       },
     });
 
-    // Create a payment link with callback
     const paymentLink = await razorpay.paymentLink.create({
+      amount: 50000, // Example: ₹500.00 in paise (adjust based on your plan)
+      currency: 'INR', // Required field
       description: 'Upgrade to PRO Plan',
-      subscription_id: subscription.id,
       customer: {
         email: dbUser.email,
         name: dbUser.firstname || 'User',
       },
+      notify: {
+        sms: true,
+        email: true,
+      },
+      reminder_enable: true,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
-    });
+      notes: {
+        userId: dbUser.id,
+        subscriptionId: subscription.id,
+      },
+    }) as RazorpayPaymentLink;
+
+    const sessionUrl = paymentLink.short_url;
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url,
+      session_url: sessionUrl,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Payment error:', error);
-    return NextResponse.json({ status: 500, message: 'Failed to initiate payment' });
+    return NextResponse.json({
+      status: 500,
+      message: error.message || 'Failed to initiate payment',
+    });
   }
 }
