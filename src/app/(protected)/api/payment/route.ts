@@ -30,7 +30,7 @@ export async function POST() {
     // 4. Create a Razorpay subscription
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12, // e.g., 12 billing cycles
+      total_count: 12,
       customer_notify: 1,
       notes: {
         userId: dbUser.id,
@@ -39,21 +39,38 @@ export async function POST() {
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert subscription in database (plan stays 'FREE' until payment is confirmed)
+    // 5. Upsert subscription in database (plan stays 'FREE' until payment)
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE' // Will be updated to 'PRO' via webhook after payment
+        plan: 'FREE'
       }
     });
 
-    // 6. Return the subscription short_url for payment
+    // 6. Create a payment link for the subscription
+    const paymentLink = await razorpay.paymentLink.create({
+      description: 'Upgrade to PRO Plan',
+      subscription_id: subscription.id,
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'User'
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
+      callback_method: 'get',
+      notes: {
+        userId: dbUser.id,
+        subscriptionId: subscription.id
+      }
+    });
+    console.log('Payment link created:', paymentLink.short_url);
+
+    // 7. Return the payment link URL
     return NextResponse.json({
       status: 200,
-      session_url: subscription.short_url // Redirect user to this URL
+      session_url: paymentLink.short_url
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
