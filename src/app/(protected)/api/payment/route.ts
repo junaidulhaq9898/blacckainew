@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
 import { razorpay } from '@/lib/razorpay';
-import axios from 'axios';
 
 export async function POST() {
   try {
-    // 1. Authenticate the user via Clerk.
+    // 1. Authenticate user via Clerk.
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
@@ -31,57 +30,39 @@ export async function POST() {
     // 4. Create a Razorpay subscription.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12, // e.g., 12 billing cycles (months)
+      total_count: 12, // e.g., 12 months
       customer_notify: 1,
-      // Use snake_case keys exactly as required.
-      notes: { 
-        userId: dbUser.id,        // EXACT key "userId"
+      notes: {
+        userId: dbUser.id,
         userEmail: dbUser.email
       }
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert the subscription in your database.
-    // (We keep the plan as FREE so that the webhook later upgrades it to PRO upon successful payment.)
+    // 5. Upsert the subscription in your database WITHOUT setting plan to 'PRO'.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id, updatedAt: new Date() },
+      update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE'
+        plan: 'FREE' // Keep as 'FREE' until payment is confirmed
       }
     });
 
-    // 6. Create a payment link for the subscription.
-    // IMPORTANT: When using a subscription_id, do NOT send extra fields such as amount, currency, customer, etc.
-    // We cast the options as any so that TypeScript accepts our snake_case keys.
-    const paymentLinkResponse = await razorpay.paymentLink.create({
-      description: 'Upgrade to PRO Plan',
-      subscription_id: subscription.id,
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
-      callback_method: 'get',
-      notes: {
-        userId: dbUser.id,
-        subscriptionId: subscription.id
-      }
-    } as any);
-
-    // Cast response to any to access short_url.
-    const link = paymentLinkResponse as any;
-    console.log('Payment link created:', link.short_url);
-
+    // 6. Return the subscription ID or a link for authentication.
+    // Razorpay will handle the payment flow based on the plan_id.
     return NextResponse.json({
       status: 200,
-      session_url: link.short_url,
+      subscription_id: subscription.id,
+      // Optionally, redirect to Razorpay's hosted checkout:
+      session_url: `https://api.razorpay.com/v1/subscriptions/${subscription.id}/authenticate`
     });
   } catch (error: any) {
-    // Use error.message if available; otherwise, JSON.stringify the error.
-    const errMsg = (error instanceof Error) ? error.message : JSON.stringify(error);
-    console.error('Payment error:', errMsg);
+    console.error('Payment error:', error.message);
     return NextResponse.json({
       status: 500,
-      message: errMsg || 'Failed to initiate payment'
+      message: error.message || 'Failed to initiate payment'
     });
   }
 }
