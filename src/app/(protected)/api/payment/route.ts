@@ -30,7 +30,7 @@ export async function POST() {
     // 4. Create a Razorpay subscription
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12,
+      total_count: 12, // e.g., 12 billing cycles
       customer_notify: 1,
       notes: {
         userId: dbUser.id,
@@ -46,14 +46,14 @@ export async function POST() {
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE'
+        plan: 'FREE' // Updated to 'PRO' via webhook
       }
     });
 
-    // 6. Create a payment link for the subscription
+    // 6. Create a payment link tied to the subscription
     const paymentLink = await razorpay.paymentLink.create({
       description: 'Upgrade to PRO Plan',
-      subscription_id: subscription.id,
+      subscription_id: subscription.id, // Links payment to subscription
       customer: {
         email: dbUser.email,
         name: dbUser.firstname || 'User'
@@ -67,10 +67,10 @@ export async function POST() {
     });
     console.log('Payment link created:', paymentLink.short_url);
 
-    // 7. Return the payment link URL
+    // 7. Return the payment link's short_url
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url
+      session_url: paymentLink.short_url // Redirect user to this URL
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
