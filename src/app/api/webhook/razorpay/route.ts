@@ -5,7 +5,7 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // 1. Read the raw request body.
+    // 1. Read the raw request body for signature verification.
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     if (!signature) {
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       }
       console.log('Found userId:', userId);
 
-      // 6. Update the subscription in your database: switch plan to PRO.
+      // 6. Update the subscription in your database to switch the plan to PRO.
       const updatedSubscription = await client.subscription.update({
         where: { userId },
         data: { plan: 'PRO', customerId: subscriptionId, updatedAt: new Date() }
@@ -56,7 +56,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: 200, message: 'Event received but not processed' });
   } catch (error: any) {
-    console.error('Webhook processing failed:', error.message || error.toString());
+    const errMsg = (error instanceof Error) ? error.message : JSON.stringify(error);
+    console.error('Webhook processing failed:', errMsg);
     return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
   }
 }
