@@ -34,19 +34,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // Create a Razorpay subscription using your plan.
+    // Create a Razorpay subscription using the allowed keys.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // Number of billing cycles (months)
       customer_notify: 1,
-      // Use the exact snake_case keys required by Razorpay.
-      notes: { userId: dbUser.id },
+      // Use snake_case keys exactly as required.
+      notes: { userId: dbUser.id }
     }) as RazorpaySubscription;
 
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
     // Upsert the subscription in your database.
-    // (Store it with plan 'FREE' so that the webhook later updates it to 'PRO' after payment is captured.)
+    // We store it with plan "FREE" so that the webhook later upgrades it to PRO.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id, updatedAt: new Date() },
@@ -54,10 +54,11 @@ export async function POST(req: Request) {
         userId: dbUser.id,
         customerId: subscription.id,
         plan: 'FREE'
-      },
+      }
     });
 
     const sessionUrl = subscription.short_url;
+    console.log('Payment link created:', sessionUrl);
 
     return NextResponse.json({
       status: 200,
