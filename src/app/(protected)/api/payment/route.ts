@@ -3,7 +3,6 @@ import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
 import Razorpay from 'razorpay';
 
-// Define the Razorpay Subscription response type
 interface RazorpaySubscription {
   id: string;
   short_url: string;
@@ -16,13 +15,11 @@ const razorpay = new Razorpay({
 
 export async function POST(req: NextRequest) {
   try {
-    // Step 1: Authenticate the user
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // Step 2: Retrieve user details from the database
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true },
@@ -31,7 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // Step 3: Create a subscription with the plan ID
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
       console.error('RAZORPAY_PLAN_ID is missing');
@@ -39,24 +35,23 @@ export async function POST(req: NextRequest) {
     }
 
     const subscription = await razorpay.subscriptions.create({
-      plan_id: planId, // Amount is defined by the plan
+      plan_id: planId,
       total_count: 12, // Number of billing cycles
-      customer_notify: 1, // Notify the customer
+      customer_notify: 1, // Notify customer via email/SMS
       notes: { userId: dbUser.id },
     }) as RazorpaySubscription;
 
-    // Step 4: Store subscription details in the database
+    // Store or update subscription details in your database
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE', // Plan remains FREE until payment is confirmed
+        plan: 'FREE', // Initial plan, update to 'PRO' via webhook on payment
       },
     });
 
-    // Step 5: Return the subscription URL
     const sessionUrl = subscription.short_url;
 
     return NextResponse.json({
