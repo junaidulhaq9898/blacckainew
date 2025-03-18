@@ -28,41 +28,40 @@ export async function POST() {
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // 4. Create a Razorpay subscription.
+    // 4. Create a Razorpay subscription using your plan.
+    // Use snake_case keys exactly.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // e.g., 12 billing cycles (months)
       customer_notify: 1,
-      // Use snake_case keys exactly.
-      notes: { userId: dbUser.id, userEmail: dbUser.email },
+      notes: { 
+        userId: dbUser.id, 
+        userEmail: dbUser.email 
+      },
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
     // 5. Upsert the subscription in your database.
-    // (We store it with plan "FREE" initially; the webhook will later update it to "PRO" once payment is captured.)
+    // We set the plan to 'PRO' immediately so that after payment the user is upgraded.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id, updatedAt: new Date() },
+      update: { customerId: subscription.id, plan: 'PRO', updatedAt: new Date() },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE',
+        plan: 'PRO'
       },
     });
 
     // 6. Create a payment link for the initial payment.
-    // (This is the old working method that opens the payment page.)
+    // IMPORTANT: When using subscription_id, do NOT include the 'amount' field.
     const paymentLink = await razorpay.paymentLink.create({
-      amount: 400, // Amount in paise (₹4.00) for testing; adjust as needed.
       currency: 'INR',
       description: 'Upgrade to PRO Plan',
-      customer: {
-        email: dbUser.email,
-        name: dbUser.firstname || 'User',
-      },
+      subscription_id: subscription.id,  // This tells Razorpay to use the subscription's plan amount
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
-      notes: {
+      notes: { 
         userId: dbUser.id,
         subscriptionId: subscription.id,
       },
@@ -71,7 +70,7 @@ export async function POST() {
 
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url, // Use this URL to redirect the user.
+      session_url: paymentLink.short_url,
     });
   } catch (error: any) {
     console.error('Payment error:', error.message || JSON.stringify(error));
