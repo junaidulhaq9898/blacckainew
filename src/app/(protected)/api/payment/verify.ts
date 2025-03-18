@@ -1,14 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const subscriptionId = searchParams.get('subscription_id');
-  const userId = searchParams.get('user_id');
+export async function POST(request: Request) {
+  const body = await request.json();
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
 
-  // Always return user ID even if verification fails
-  return NextResponse.json({
-    status: 200,
-    verified: false,
-    userId: userId || null
-  });
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!);
+  shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+  const digest = shasum.digest('hex');
+
+  if (digest === razorpay_signature) {
+    // Payment is verified
+    return NextResponse.json({ status: 200, message: 'Payment verified' });
+  } else {
+    // Payment verification failed
+    return NextResponse.json({ status: 400, message: 'Invalid signature' });
+  }
 }

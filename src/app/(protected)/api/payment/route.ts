@@ -5,15 +5,17 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
+    // Authentication and validation
     const clerkUser = await currentUser();
     if (!clerkUser) return NextResponse.json({ status: 401, message: 'Unauthorized' });
-
+    
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true }
     });
     if (!dbUser) return NextResponse.json({ status: 404, message: 'User not found' });
 
+    // Validate plan ID
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) return NextResponse.json({ status: 500, message: 'Server error' });
 
@@ -22,12 +24,12 @@ export async function POST() {
       plan_id: planId,
       total_count: 12,
       customer_notify: 1,
-      notes: { 
-        user_id: dbUser.id // Crucial snake_case format
+      notes: {
+        user_id: dbUser.id // Must be snake_case
       }
     });
 
-    // Create PROPER payment link without extra fields
+    // Create payment link with ONLY required parameters
     const paymentLink = await razorpay.paymentLink.create({
       subscription_id: subscription.id,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`,
@@ -37,6 +39,7 @@ export async function POST() {
       }
     });
 
+    // Update database
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -47,7 +50,7 @@ export async function POST() {
       }
     });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       status: 200,
       session_url: paymentLink.short_url
     });
