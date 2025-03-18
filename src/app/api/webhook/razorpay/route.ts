@@ -1,40 +1,40 @@
 import { NextResponse } from 'next/server';
+import { client } from '@/lib/prisma'; // Add missing import
+import { razorpay } from '@/lib/razorpay'; // Add missing import
 import crypto from 'crypto';
-import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // Verify webhook signature
+    // 1. Verify webhook signature
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
-    if (!signature) return NextResponse.json({ status: 400, message: 'Missing signature' });
+    if (!signature) {
+      return NextResponse.json({ status: 400, message: 'Missing signature' });
+    }
 
     const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
     shasum.update(body);
     const digest = shasum.digest('hex');
-    if (digest !== signature) return NextResponse.json({ status: 400, message: 'Invalid signature' });
+    
+    if (digest !== signature) {
+      return NextResponse.json({ status: 400, message: 'Invalid signature' });
+    }
 
-    // Process webhook event
+    // 2. Process webhook event
     const payload = JSON.parse(body);
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
-      const subscriptionId = payment.subscription_id;
+      const subscriptionId = payment.subscription_id; // Declare subscriptionId
       
       if (!subscriptionId) {
         return NextResponse.json({ status: 400, message: 'Missing subscription ID' });
       }
 
-      // Fetch subscription details
+      // 3. Fetch subscription details
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       const userId = subscription.notes.user_id;
 
-      // Validate user ID format
-      if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
-        return NextResponse.json({ status: 400, message: 'Invalid user ID' });
-      }
-
-      // Update to PRO plan
+      // 4. Update subscription plan
       await client.subscription.update({
         where: { customerId: subscriptionId },
         data: { 
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ status: 200, message: 'Event ignored' });
+    
   } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json({ status: 500, message: 'Server error' });
