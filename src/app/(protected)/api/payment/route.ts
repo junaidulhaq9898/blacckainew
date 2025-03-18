@@ -29,42 +29,32 @@ export async function POST() {
     }
 
     // 4. Create a Razorpay subscription using your plan.
-    // Use snake_case keys exactly.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // e.g., 12 billing cycles (months)
       customer_notify: 1,
-      notes: { 
-        userId: dbUser.id, 
-        userEmail: dbUser.email 
-      },
+      // Use snake_case keys exactly.
+      notes: { userId: dbUser.id, userEmail: dbUser.email },
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
     // 5. Upsert the subscription in your database.
-    // We set the plan to 'PRO' immediately so that after payment the user is upgraded.
+    // (We store it initially with plan "FREE"; the webhook will update it to "PRO" after payment.)
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id, plan: 'PRO', updatedAt: new Date() },
+      update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'PRO'
+        plan: 'FREE',
       },
     });
 
-    // 6. Create a payment link for the initial payment.
-    // IMPORTANT: When using subscription_id, do NOT include the 'amount' field.
+    // 6. Create a payment link using only the subscription_id.
+    // IMPORTANT: When using subscription_id, do NOT include fields like amount, currency, callback_method, or notes.
     const paymentLink = await razorpay.paymentLink.create({
-      currency: 'INR',
-      description: 'Upgrade to PRO Plan',
-      subscription_id: subscription.id,  // This tells Razorpay to use the subscription's plan amount
+      subscription_id: subscription.id,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
-      callback_method: 'get',
-      notes: { 
-        userId: dbUser.id,
-        subscriptionId: subscription.id,
-      },
     });
     console.log('Payment link created:', paymentLink.short_url);
 
