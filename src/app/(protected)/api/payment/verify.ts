@@ -1,6 +1,6 @@
+// src/app/api/payment/verify/route.ts
 import { NextResponse } from 'next/server';
 import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -9,35 +9,25 @@ export async function GET(request: Request) {
 
   try {
     if (!subscriptionId || !userId) {
-      return NextResponse.json({ 
-        status: 400,
-        message: 'Missing required parameters'
-      });
+      return NextResponse.json({ status: 400, message: 'Missing parameters' });
     }
 
-    // Query using individual unique fields
     const subscription = await client.subscription.findFirst({
       where: {
         AND: [
-          { userId: userId },
-          { customerId: subscriptionId }
+          { customerId: subscriptionId },
+          { userId: userId }
         ]
       }
     });
 
-    if (subscription?.plan === 'PRO') {
-      return NextResponse.json({ 
-        status: 200,
-        verified: true
-      });
-    }
+    return NextResponse.json({
+      status: 200,
+      verified: subscription?.plan === 'PRO'
+    });
 
-    // Rest of the verification logic remains same...
   } catch (error) {
     console.error('Verification error:', error);
-    return NextResponse.json({
-      status: 500,
-      message: 'Payment verification failed'
-    });
+    return NextResponse.json({ status: 500, message: 'Verification failed' });
   }
 }
