@@ -1,33 +1,19 @@
-// src/app/api/payment/verify/route.ts
 import { NextResponse } from 'next/server';
-import { client } from '@/lib/prisma';
+import crypto from 'crypto';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const subscriptionId = searchParams.get('subscription_id');
-  const userId = searchParams.get('user_id');
+export async function POST(request: Request) {
+  const body = await request.json();
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
 
-  try {
-    if (!subscriptionId || !userId) {
-      return NextResponse.json({ status: 400, message: 'Missing parameters' });
-    }
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!);
+  shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+  const digest = shasum.digest('hex');
 
-    const subscription = await client.subscription.findFirst({
-      where: {
-        AND: [
-          { customerId: subscriptionId },
-          { userId: userId }
-        ]
-      }
-    });
-
-    return NextResponse.json({
-      status: 200,
-      verified: subscription?.plan === 'PRO'
-    });
-
-  } catch (error) {
-    console.error('Verification error:', error);
-    return NextResponse.json({ status: 500, message: 'Verification failed' });
+  if (digest === razorpay_signature) {
+    // Payment is verified
+    return NextResponse.json({ status: 200, message: 'Payment verified' });
+  } else {
+    // Payment verification failed
+    return NextResponse.json({ status: 400, message: 'Invalid signature' });
   }
 }
