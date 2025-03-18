@@ -5,61 +5,61 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
-    // Authentication and validation
+    // 1. Authenticate user via Clerk
     const clerkUser = await currentUser();
-    if (!clerkUser) return NextResponse.json({ status: 401, message: 'Unauthorized' });
-    
+    if (!clerkUser) {
+      return NextResponse.json({ status: 401, message: 'Unauthorized' });
+    }
+
+    // 2. Retrieve user from database
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true }
     });
-    if (!dbUser) return NextResponse.json({ status: 404, message: 'User not found' });
+    if (!dbUser) {
+      return NextResponse.json({ status: 404, message: 'User not found' });
+    }
 
-    // Validate plan ID
+    // 3. Validate Razorpay plan ID
     const planId = process.env.RAZORPAY_PLAN_ID;
-    if (!planId) return NextResponse.json({ status: 500, message: 'Server error' });
+    if (!planId) {
+      console.error('RAZORPAY_PLAN_ID missing');
+      return NextResponse.json({ status: 500, message: 'Server configuration error' });
+    }
 
-    // Create subscription with snake_case notes
-    const subscription = await razorpay.subscriptions.create({
-      plan_id: planId,
-      total_count: 12,
-      customer_notify: 1,
-      notes: {
-        user_id: dbUser.id // Must be snake_case
-      }
-    });
-
-    // Create payment link with ONLY required parameters
+    // 4. Create a payment link for subscription registration
     const paymentLink = await razorpay.paymentLink.create({
-      subscription_id: subscription.id,
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`,
+      amount: 0, // Amount is 0 for subscription registration; plan ID determines the cost
+      currency: 'INR',
+      description: 'Upgrade to PRO Plan',
       customer: {
-        email: dbUser.email,
-        name: dbUser.firstname || 'User'
-      }
-    });
-
-    // Update database
-    await client.subscription.upsert({
-      where: { userId: dbUser.id },
-      update: { customerId: subscription.id },
-      create: {
+        name: dbUser.firstname || 'User',
+        email: dbUser.email
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/dashboard?subscription_id={subscription_id}`,
+      callback_method: 'get',
+      subscription_registration: {
+        plan_id: planId,
+        total_count: 12, // e.g., 12 billing cycles
+        customer_notify: 1
+      },
+      notes: {
         userId: dbUser.id,
-        customerId: subscription.id,
-        plan: 'FREE'
+        userEmail: dbUser.email
       }
     });
+    console.log('Payment link created:', paymentLink.id);
 
+    // 5. Return the payment link’s short_url for the client to redirect to
     return NextResponse.json({
       status: 200,
       session_url: paymentLink.short_url
     });
-
   } catch (error: any) {
-    console.error('Payment error:', error);
+    console.error('Payment error:', error.message);
     return NextResponse.json({
-      status: error.statusCode || 500,
-      message: error.error?.description || 'Payment failed'
+      status: 500,
+      message: error.message || 'Failed to initiate payment'
     });
   }
 }
