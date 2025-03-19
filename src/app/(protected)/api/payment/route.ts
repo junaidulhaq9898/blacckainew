@@ -1,55 +1,47 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
+import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
-    // 1. Authentication
+    // 1. Authenticate the user via Clerk.
     const clerkUser = await currentUser();
-    if (!clerkUser) return NextResponse.json({ status: 401, message: 'Unauthorized' });
+    if (!clerkUser) {
+      return NextResponse.json({ status: 401, message: 'Unauthorized' });
+    }
 
-    // 2. Get database user
+    // 2. Retrieve the user from your database.
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
-      select: { id: true }
+      select: { id: true, email: true, firstname: true }
     });
-    if (!dbUser) return NextResponse.json({ status: 404, message: 'User not found' });
+    if (!dbUser) {
+      return NextResponse.json({ status: 404, message: 'User not found' });
+    }
 
-    // 3. Create subscription
-    const subResponse = await fetch('https://api.razorpay.com/v1/subscriptions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`
-      },
-      body: JSON.stringify({
-        plan_id: process.env.RAZORPAY_PLAN_ID,
-        total_count: 12,
-        notes: { user_id: dbUser.id }, // Only snake_case
-        customer_notify: 1
-      })
+    // 3. Validate Razorpay plan ID.
+    const planId = process.env.RAZORPAY_PLAN_ID;
+    if (!planId) {
+      console.error('RAZORPAY_PLAN_ID missing');
+      return NextResponse.json({ status: 500, message: 'Server configuration error' });
+    }
+
+    // 4. Create a Razorpay subscription with the plan id.
+    // This ensures that the payment is tracked correctly in Razorpay.
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: planId,
+      total_count: 12, // e.g., 12 billing cycles
+      customer_notify: 1,
+      notes: {
+        userId: dbUser.id,
+        userEmail: dbUser.email
+      }
     });
+    console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    const subscription = await subResponse.json();
-    if (subscription.error) throw subscription.error;
-
-    // 4. Create payment link (ONLY required fields)
-    const plResponse = await fetch('https://api.razorpay.com/v1/payment_links', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`
-      },
-      body: JSON.stringify({
-        subscription_id: subscription.id, // snake_case
-        callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`
-      })
-    });
-
-    const paymentLink = await plResponse.json();
-    if (paymentLink.error) throw paymentLink.error;
-
-    // 5. Update database
+    // 5. Upsert the subscription in your database.
+    // Initially, the plan is set to 'FREE' until the payment is captured and the webhook updates it.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -60,16 +52,38 @@ export async function POST() {
       }
     });
 
-    return NextResponse.json({ 
-      status: 200,
-      session_url: paymentLink.short_url
+    // 6. Create a payment link for the initial payment.
+    // This payment link uses the old working approach which includes:
+    // - Amount, currency, and description.
+    // - A callback URL that redirects to your dashboard (or payment-success page).
+    // - Customer details and notes (which include the subscription ID).
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: 400, // Amount in paise (e.g., ₹4.00)
+      currency: 'INR',
+      description: 'Upgrade to PRO Plan',
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'User'
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
+      callback_method: 'get',
+      notes: {
+        userId: dbUser.id,
+        subscriptionId: subscription.id
+      }
     });
+    console.log('Payment link created:', paymentLink.short_url);
 
-  } catch (error: any) {
-    console.error('Payment error:', error);
+    // 7. Return the payment link URL (short_url) for redirection.
     return NextResponse.json({
-      status: error.status_code || 500,
-      message: error.description || 'Payment failed'
+      status: 200,
+      session_url: paymentLink.short_url,
+    });
+  } catch (error: any) {
+    console.error('Payment error:', error.message);
+    return NextResponse.json({
+      status: 500,
+      message: error.message || 'Failed to initiate payment'
     });
   }
 }
