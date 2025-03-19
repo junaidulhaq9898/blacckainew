@@ -50,7 +50,6 @@ export async function POST() {
         plan: 'FREE', // Will be updated to "PRO" via webhook
       },
     });
-
     // Return the subscription ID to the client
     return NextResponse.json({
       status: 200,
