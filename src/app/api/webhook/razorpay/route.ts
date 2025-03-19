@@ -21,20 +21,16 @@ export async function POST(request: Request) {
       
       if (!subscriptionId) return NextResponse.json({ status: 400, message: 'Missing subscription ID' });
 
-      // Handle both note formats
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      const userId = subscription.notes.userId || subscription.notes.user_id;
+      const userId = subscription.notes.user_id;
 
-      if (!userId) {
-        return NextResponse.json({ status: 400, message: 'User ID not found' });
-      }
+      if (!userId) return NextResponse.json({ status: 400, message: 'User ID not found' });
 
-      // Update using old schema structure
+      // Update using customerId
       await client.subscription.update({
-        where: { userId: userId },
+        where: { customerId: subscriptionId },
         data: { 
           plan: 'PRO',
-          customerId: subscriptionId,
           updatedAt: new Date()
         }
       });

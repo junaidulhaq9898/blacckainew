@@ -17,18 +17,15 @@ export async function POST() {
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) return NextResponse.json({ status: 500, message: 'Server error' });
 
-    // Create subscription with BOTH camelCase and snake_case notes
+    // Create subscription with snake_case notes
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12,
       customer_notify: 1,
-      notes: {
-        userId: dbUser.id,     // camelCase for your existing code
-        user_id: dbUser.id     // snake_case for Razorpay compatibility
-      }
+      notes: { user_id: dbUser.id } // Only snake_case
     });
 
-    // Create payment link with minimal parameters
+    // Create payment link with ONLY required fields
     const paymentLink = await razorpay.paymentLink.create({
       subscription_id: subscription.id,
       callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`,
@@ -38,7 +35,7 @@ export async function POST() {
       }
     });
 
-    // Maintain old database structure
+    // Upsert using both fields
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },

@@ -8,20 +8,16 @@ export default function PaymentSuccessContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const subscriptionId = searchParams.get('subscription_id');
-    const userId = searchParams.get('user_id');
-
-    // Direct redirect with fallback
-    if (userId) {
-      router.push(`/dashboard/${userId}`);
-    } else {
-      router.push('/dashboard');
-    }
+    const userId = searchParams.get('user_id'); // Use snake_case
     
-    // Force refresh after 1 second
-    setTimeout(() => window.location.reload(), 1000);
-
+    if (userId) {
+      // Immediate redirect with user ID
+      window.location.href = `/dashboard/${userId}?payment=success`;
+    } else {
+      // Fallback to generic dashboard
+      window.location.href = '/dashboard?payment=error';
+    }
   }, [router, searchParams]);
 
-  return null; // Silent redirect
+  return null; // No rendering needed
 }
