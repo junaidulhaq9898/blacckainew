@@ -1,69 +1,93 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
 import { razorpay } from '@/lib/razorpay';
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    // 1. Read and verify the raw request body
-    const body = await request.text();
-    const signature = request.headers.get('x-razorpay-signature');
-    if (!signature) {
-      console.error('No signature provided');
-      return NextResponse.json({ status: 400, message: 'Missing signature' });
-    }
-    const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
-    shasum.update(body);
-    const digest = shasum.digest('hex');
-    if (digest !== signature) {
-      console.error('Invalid signature');
-      return NextResponse.json({ status: 400, message: 'Invalid signature' });
+    // 1. Authenticate user via Clerk
+    const clerkUser = await currentUser();
+    if (!clerkUser) {
+      return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // 2. Parse the webhook payload
-    const payload = JSON.parse(body);
-    console.log('Webhook event received:', payload.event);
-
-    // 3. Process the payment.captured event
-    if (payload.event === 'payment.captured') {
-      const payment = payload.payload.payment.entity;
-      const subscriptionId = payment.subscription_id;
-      if (!subscriptionId) {
-        console.error('No subscription ID in payment:', payment);
-        return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
-      }
-
-      // 4. Fetch the subscription details from Razorpay
-      const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      console.log('Fetched subscription:', subscription);
-
-      // 5. Extract userId from the subscription's notes
-      const userId = subscription.notes?.userId ? String(subscription.notes.userId) : '';
-      console.log('Extracted userId:', userId);
-
-      if (!userId) {
-        console.error('Missing userId in subscription notes:', subscription.notes);
-        return NextResponse.json({ status: 400, message: 'Missing userId in notes' });
-      }
-
-      // 6. Update the subscription record in the database to switch the plan to PRO
-      const updatedSubscription = await client.subscription.update({
-        where: { userId: userId },
-        data: {
-          plan: 'PRO',
-          customerId: subscriptionId,
-          updatedAt: new Date()
-        }
-      });
-      console.log('Subscription updated successfully:', updatedSubscription);
-
-      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
+    // 2. Retrieve user from database
+    const dbUser = await client.user.findUnique({
+      where: { clerkId: clerkUser.id },
+      select: { id: true, email: true, firstname: true },
+    });
+    if (!dbUser) {
+      return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // If event is not payment.captured, return success without processing.
-    return NextResponse.json({ status: 200, message: 'Event received but not processed' });
+    // 3. Validate Razorpay plan ID
+    const planId = process.env.RAZORPAY_PLAN_ID;
+    if (!planId) {
+      console.error('RAZORPAY_PLAN_ID missing');
+      return NextResponse.json({ status: 500, message: 'Server configuration error' });
+    }
+
+    // 4. Create a Razorpay subscription
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: planId,
+      total_count: 12,
+      customer_notify: 1,
+      notes: {
+        userId: dbUser.id,
+        userEmail: dbUser.email,
+      },
+    });
+    console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
+
+    // 5. Upsert subscription in database with plan 'FREE' initially
+    await client.subscription.upsert({
+      where: { userId: dbUser.id },
+      update: { customerId: subscription.id },
+      create: {
+        userId: dbUser.id,
+        customerId: subscription.id,
+        plan: 'FREE', // Updated to 'PRO' via webhook after payment
+      },
+    });
+
+    // 6. Fetch the first invoice for the subscription
+    const invoices = await razorpay.invoices.all({
+      subscription_id: subscription.id,
+    });
+    if (invoices.items.length === 0) {
+      throw new Error('No invoices found for the subscription');
+    }
+    const invoice = invoices.items[0];
+
+    // 7. Create a payment link for the invoice with callback_url
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: invoice.amount, // Use the invoice amount (tied to plan ID)
+      currency: invoice.currency,
+      description: 'Upgrade to PRO Plan',
+      customer: {
+        email: dbUser.email,
+        name: dbUser.firstname || 'User',
+      },
+      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
+      callback_method: 'get',
+      notes: {
+        userId: dbUser.id,
+        subscriptionId: subscription.id,
+        invoiceId: invoice.id,
+      },
+    });
+    console.log('Payment link created:', paymentLink.short_url);
+
+    // 8. Return the payment link short_url
+    return NextResponse.json({
+      status: 200,
+      session_url: paymentLink.short_url,
+    });
   } catch (error: any) {
-    console.error('Webhook processing failed:', error.message);
-    return NextResponse.json({ status: 500, message: 'Failed to process webhook' });
+    console.error('Payment error:', error.message);
+    return NextResponse.json({
+      status: 500,
+      message: error.message || 'Failed to initiate payment',
+    });
   }
 }
