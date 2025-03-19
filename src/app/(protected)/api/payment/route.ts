@@ -1,37 +1,55 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay';
 
 export async function POST() {
   try {
+    // Authentication
     const clerkUser = await currentUser();
     if (!clerkUser) return NextResponse.json({ status: 401, message: 'Unauthorized' });
 
+    // Get user from DB
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
-      select: { id: true }
+      select: { id: true, email: true, firstname: true }
     });
     if (!dbUser) return NextResponse.json({ status: 404, message: 'User not found' });
 
-    const planId = process.env.RAZORPAY_PLAN_ID;
-    if (!planId) return NextResponse.json({ status: 500, message: 'Server error' });
-
-    // 1. Create subscription with snake_case notes
-    const subscription = await razorpay.subscriptions.create({
-      plan_id: planId,
-      total_count: 12,
-      customer_notify: 1,
-      notes: { user_id: dbUser.id } // Only snake_case
+    // Create subscription directly via Razorpay API
+    const subResponse = await fetch('https://api.razorpay.com/v1/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`
+      },
+      body: JSON.stringify({
+        plan_id: process.env.RAZORPAY_PLAN_ID,
+        total_count: 12,
+        notes: { user_id: dbUser.id },
+        customer_notify: 1
+      })
     });
 
-    // 2. Create minimal payment link
-    const paymentLink = await razorpay.paymentLink.create({
-      subscription_id: subscription.id,
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`
+    const subscription = await subResponse.json();
+    if (subscription.error) throw subscription.error;
+
+    // Create payment link directly
+    const plResponse = await fetch('https://api.razorpay.com/v1/payment_links', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`
+      },
+      body: JSON.stringify({
+        subscription_id: subscription.id,
+        callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}&user_id=${dbUser.id}`
+      })
     });
 
-    // 3. Update database
+    const paymentLink = await plResponse.json();
+    if (paymentLink.error) throw paymentLink.error;
+
+    // Update database
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -51,7 +69,7 @@ export async function POST() {
     console.error('Payment error:', error);
     return NextResponse.json({
       status: error.statusCode || 500,
-      message: error.error?.description || 'Payment failed'
+      message: error.description || 'Payment failed'
     });
   }
 }
