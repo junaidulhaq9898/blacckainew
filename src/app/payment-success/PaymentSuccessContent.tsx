@@ -2,73 +2,49 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
 export default function PaymentSuccessContent() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const [status, setStatus] = useState('Payment processed successfully');
-  const [attempts, setAttempts] = useState(0);
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
 
-  // Get the user ID from the URL
+  const subscriptionId = searchParams.get('subscription_id');
   const userId = searchParams.get('user_id');
 
   useEffect(() => {
-    if (!userId) {
-      console.error('No user_id found in query parameters');
-      router.push('/error?message=Missing%20user%20ID');
-      return;
-    }
-
-    // Check if the subscription has been updated to PRO before redirecting
-    async function checkSubscriptionStatus() {
+    const verifyPayment = async () => {
       try {
-        console.log('Checking subscription status...');
-        const response = await fetch('/api/check-subscription');
-        const data = await response.json();
-        
-        if (data.plan === 'PRO') {
-          console.log('PRO plan confirmed, redirecting to dashboard');
-          // Redirect to dashboard
+        if (!subscriptionId || !userId) {
           router.push('/dashboard');
+          return;
+        }
+
+        // From old code's verification approach
+        const response = await fetch(
+          `/api/payment/verify?subscription_id=${subscriptionId}&user_id=${userId}`
+        );
+
+        if (response.ok) {
+          router.push(`/dashboard/${userId}`);
+          router.refresh();
         } else {
-          // Increment attempt counter
-          setAttempts(prev => prev + 1);
-          
-          if (attempts < 10) {  // Try up to 10 times (20 seconds)
-            console.log(`Waiting for PRO status update... (Attempt ${attempts + 1})`);
-            setStatus(`Payment processed. Waiting for confirmation... (${attempts + 1}/10)`);
-            // Try again in 2 seconds
-            setTimeout(checkSubscriptionStatus, 2000);
-          } else {
-            // Fall back to redirect anyway after 10 attempts
-            console.log('Maximum attempts reached, redirecting to dashboard anyway');
-            setStatus('Redirecting to dashboard...');
-            router.push('/dashboard');
-          }
+          throw new Error('Verification failed');
         }
       } catch (error) {
-        console.error('Error checking subscription:', error);
-        setStatus('Error checking subscription status. Redirecting to dashboard anyway...');
-        // On error, redirect to dashboard after a short delay
-        setTimeout(() => router.push('/dashboard'), 2000);
+        console.error('Payment verification error:', error);
+        router.push('/payment-error');
       }
-    }
+    };
 
-    // Start checking the subscription status
-    checkSubscriptionStatus();
-  }, [userId, router, attempts]);
+    verifyPayment();
+  }, [subscriptionId, userId, router]);
 
   return (
-    <div className="text-center p-8">
-      <h1 className="text-2xl font-bold mb-4">Payment Successful</h1>
-      <p className="mb-4">{status}</p>
-      {userId && (
-        <div className="flex justify-center">
-          <div className="animate-pulse h-3 w-3 bg-blue-600 rounded-full mx-1"></div>
-          <div className="animate-pulse h-3 w-3 bg-blue-600 rounded-full mx-1" style={{ animationDelay: '200ms' }}></div>
-          <div className="animate-pulse h-3 w-3 bg-blue-600 rounded-full mx-1" style={{ animationDelay: '400ms' }}></div>
-        </div>
-      )}
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+      <h1 className="text-2xl font-semibold">Processing Payment</h1>
+      <p className="text-gray-600">This will just take a moment...</p>
     </div>
   );
 }
