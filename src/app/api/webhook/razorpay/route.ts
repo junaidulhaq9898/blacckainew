@@ -5,6 +5,7 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
+    // Signature verification
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     if (!signature) return NextResponse.json({ status: 400, message: 'Missing signature' });
@@ -14,6 +15,7 @@ export async function POST(request: Request) {
     const digest = shasum.digest('hex');
     if (digest !== signature) return NextResponse.json({ status: 400, message: 'Invalid signature' });
 
+    // Process event
     const payload = JSON.parse(body);
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
@@ -21,6 +23,7 @@ export async function POST(request: Request) {
       
       if (!subscriptionId) return NextResponse.json({ status: 400, message: 'Missing subscription ID' });
 
+      // Fetch subscription with timeout
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       const userId = subscription.notes.user_id;
 

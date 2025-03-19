@@ -1,23 +1,20 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
-export default function PaymentSuccessContent() {
-  const router = useRouter();
+export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const userId = searchParams.get('user_id'); // Use snake_case
-    
-    if (userId) {
-      // Immediate redirect with user ID
-      window.location.href = `/dashboard/${userId}?payment=success`;
-    } else {
-      // Fallback to generic dashboard
-      window.location.href = '/dashboard?payment=error';
-    }
-  }, [router, searchParams]);
+    const userId = searchParams.get('user_id');
+    const redirectUrl = userId 
+      ? `/dashboard/${userId}?payment=success`
+      : '/dashboard?payment=error';
 
-  return null; // No rendering needed
+    // Hard redirect with full page reload
+    window.location.href = redirectUrl;
+  }, []);
+
+  return null;
 }
