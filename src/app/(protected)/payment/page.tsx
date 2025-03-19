@@ -1,95 +1,71 @@
-'use client'; // Mark this as a Client Component since Razorpay runs in the browser
+// /Users/junaid/Desktop/slide-webprodigies/src/app/payment/page.tsx
+"use client";
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
 
-// Extend the Window interface to recognize Razorpay
 declare global {
   interface Window {
-    Razorpay: any; // Basic type; refine with specific Razorpay types if available
+    Razorpay: any; // Type declaration for Razorpay
   }
 }
 
-// Define the structure of the Razorpay response
-interface RazorpayResponse {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-}
-
-// Main Payment Page Component
 export default function PaymentPage() {
   const router = useRouter();
+  const { user, isLoaded } = useUser();
+  const [scriptLoaded, setScriptLoaded] = useState(false);
 
-  // Function to load the Razorpay script dynamically
-  const loadRazorpayScript = () => {
-    return new Promise<void>((resolve) => {
+  // Load Razorpay script dynamically
+  useEffect(() => {
+    const loadScript = () => {
+      if (window.Razorpay) {
+        setScriptLoaded(true);
+        return;
+      }
       const script = document.createElement('script');
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve();
-      script.onerror = () => {
-        console.error('Failed to load Razorpay script');
-        resolve(); // Resolve anyway to avoid blocking, but you might want to handle this differently
-      };
+      script.onload = () => setScriptLoaded(true);
       document.body.appendChild(script);
-    });
-  };
-
-  // Function to initiate the payment
-  const initiatePayment = async () => {
-    // Ensure the script is loaded before proceeding
-    await loadRazorpayScript();
-
-    if (!window.Razorpay) {
-      console.error('Razorpay SDK not loaded');
-      return;
-    }
-
-    // Example options for Razorpay (replace with your actual order details)
-    const options = {
-      key: 'YOUR_RAZORPAY_KEY', // Replace with your Razorpay key
-      amount: 50000, // Amount in paise (e.g., 500 INR = 50000 paise)
-      currency: 'INR',
-      name: 'Your Company Name',
-      description: 'Test Transaction',
-      order_id: 'YOUR_ORDER_ID', // Fetch this from your backend
-      handler: function (response: RazorpayResponse) {
-        // Handle successful payment
-        console.log('Payment successful:', response);
-        router.push('/dashboard'); // Redirect after success
-      },
-      prefill: {
-        name: 'Customer Name',
-        email: 'customer@example.com',
-        contact: '9999999999',
-      },
-      notes: {
-        address: 'Customer Address',
-      },
-      theme: {
-        color: '#3399cc',
-      },
     };
-
-    // Initialize and open Razorpay checkout
-    const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', function (response: any) {
-      console.error('Payment failed:', response.error);
-      alert('Payment failed. Please try again.');
-    });
-    rzp.open();
-  };
-
-  // Trigger payment on component mount (or tie this to a button click)
-  useEffect(() => {
-    initiatePayment();
+    loadScript();
   }, []);
 
-  return (
-    <div>
-      <h1>Processing Payment...</h1>
-      {/* You can add a button here to trigger initiatePayment manually */}
-      {/* <button onClick={initiatePayment}>Pay Now</button> */}
-    </div>
-  );
+  // Initiate payment when script and user are ready
+  useEffect(() => {
+    if (!scriptLoaded || !isLoaded || !user) return;
+
+    const initiatePayment = async () => {
+      try {
+        const res = await fetch('/api/payment', { method: 'POST' });
+        const data = await res.json();
+        if (!data.subscriptionId) throw new Error('Subscription ID missing');
+
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, // Public key from .env
+          subscription_id: data.subscriptionId,
+          name: 'Slide Webprodigies',
+          description: 'Subscription Plan',
+          handler: (response: any) => {
+            console.log('Payment successful:', response);
+            router.push(`/dashboard/${user.id}`); // Redirect using user.id
+          },
+          prefill: {
+            email: user.emailAddresses[0].emailAddress,
+            name: user.firstName || 'User',
+          },
+        };
+
+        const razorpay = new window.Razorpay(options);
+        razorpay.open();
+      } catch (error) {
+        console.error('Payment error:', error);
+      }
+    };
+
+    initiatePayment();
+  }, [scriptLoaded, isLoaded, user, router]);
+
+  if (!isLoaded) return <div>Loading...</div>;
+  return <div>Processing payment...</div>;
 }

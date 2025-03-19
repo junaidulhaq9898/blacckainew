@@ -1,65 +1,51 @@
-// /Users/junaid/Desktop/slide-webprodigies/src/app/api/webhook/razorpay/route.ts
-import { NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { client } from '@/lib/prisma'; // Adjust this import based on your Prisma setup
-import { razorpay } from '@/lib/razorpay'; // Adjust this import based on your Razorpay setup
+import { NextRequest, NextResponse } from 'next/server';
+import { client } from '@/lib/prisma';
+import Razorpay from 'razorpay';
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    // Get the raw body and signature for verification
-    const body = await request.text();
-    const signature = request.headers.get('x-razorpay-signature');
-    if (!signature) {
-      console.error('No signature provided');
-      return NextResponse.json({ status: 400, message: 'Missing signature' });
-    }
+    const body = await req.json();
+    const event = body.event;
 
-    // Verify the webhook signature
-    const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET!);
-    shasum.update(body);
-    const digest = shasum.digest('hex');
-    if (digest !== signature) {
-      console.error('Invalid signature');
-      return NextResponse.json({ status: 400, message: 'Invalid signature' });
-    }
+    if (event === 'payment.captured') {
+      const payment = body.payload.payment.entity;
+      const subscriptionId = payment.subscription_id;
 
-    // Parse the webhook payload
-    const payload = JSON.parse(body);
-    console.log('Webhook event received:', payload.event);
-
-    // Handle payment or subscription events
-    if (payload.event === 'payment.captured' || payload.event === 'subscription.charged') {
-      const subscriptionId =
-        payload.payload.payment?.entity?.subscription_id ||
-        payload.payload.subscription?.entity?.id;
       if (!subscriptionId) {
-        console.error('No subscription ID found');
-        return NextResponse.json({ status: 400, message: 'Missing subscription ID' });
+        console.error('No subscription_id in payment webhook');
+        return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
       }
 
-      // Fetch subscription details from Razorpay
-      const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-      const userId = subscription.notes?.userId;
-      if (!userId) {
-        console.error('No userId in subscription notes');
-        return NextResponse.json({ status: 400, message: 'Missing userId' });
-      }
-
-      // Update the user’s plan to "PRO"
-      await client.subscription.update({
-        where: { userId: userId },
-        data: { plan: 'PRO', updatedAt: new Date() },
+      // Find the subscription in your database
+      const subscription = await client.subscription.findUnique({
+        where: { customerId: subscriptionId },
+        select: { userId: true, plan: true }
       });
-      console.log(`User ${userId} plan updated to PRO`);
-      return NextResponse.json({ status: 200, message: 'Plan updated to PRO' });
+
+      if (!subscription) {
+        console.error('Subscription not found for ID:', subscriptionId);
+        return NextResponse.json({ status: 404, message: 'Subscription not found' });
+      }
+
+      // Update the plan to "PRO" if it's still "FREE"
+      if (subscription.plan !== 'PRO') {
+        await client.subscription.update({
+          where: { customerId: subscriptionId },
+          data: { plan: 'PRO' }
+        });
+        console.log(`Plan updated to PRO for userId: ${subscription.userId}`);
+      }
+
+      return NextResponse.json({ status: 200, message: 'Webhook processed' });
     }
 
-    return NextResponse.json({ status: 200, message: 'Event received but not processed' });
+    // Ignore other events
+    return NextResponse.json({ status: 200, message: 'Event ignored' });
   } catch (error: any) {
-    console.error('Webhook error:', error.message);
+    console.error('Webhook error:', error);
     return NextResponse.json({
       status: 500,
-      message: 'Failed to process webhook',
+      message: error.message || 'Failed to process webhook'
     });
   }
 }
