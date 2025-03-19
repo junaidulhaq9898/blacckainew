@@ -1,17 +1,18 @@
+// /Users/junaid/Desktop/slide-webprodigies/src/app/(protected)/api/payment/route.ts
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { client } from '@/lib/prisma';
-import { razorpay } from '@/lib/razorpay';
+import { client } from '@/lib/prisma'; // Adjust this import based on your Prisma setup
+import { razorpay } from '@/lib/razorpay'; // Adjust this import based on your Razorpay setup
 
 export async function POST() {
   try {
-    // 1. Authenticate user via Clerk
+    // Authenticate the user with Clerk
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // 2. Retrieve user from database
+    // Fetch the user from the database
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true },
@@ -20,17 +21,17 @@ export async function POST() {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // 3. Validate Razorpay plan ID
+    // Ensure Razorpay plan ID is available
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
-      console.error('RAZORPAY_PLAN_ID missing');
+      console.error('RAZORPAY_PLAN_ID is not set');
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // 4. Create a Razorpay subscription
+    // Create a Razorpay subscription
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
-      total_count: 12,
+      total_count: 12, // Example: 12 billing cycles
       customer_notify: 1,
       notes: {
         userId: dbUser.id,
@@ -39,49 +40,21 @@ export async function POST() {
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert subscription in database with plan 'FREE' initially
+    // Store the subscription in the database with an initial "FREE" plan
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE', // Updated to 'PRO' via webhook after payment
+        plan: 'FREE', // Will be updated to "PRO" via webhook
       },
     });
 
-    // 6. Fetch the first invoice for the subscription
-    const invoices = await razorpay.invoices.all({
-      subscription_id: subscription.id,
-    });
-    if (invoices.items.length === 0) {
-      throw new Error('No invoices found for the subscription');
-    }
-    const invoice = invoices.items[0];
-
-    // 7. Create a payment link for the invoice with callback_url
-    const paymentLink = await razorpay.paymentLink.create({
-      amount: invoice.amount, // Use the invoice amount (tied to plan ID)
-      currency: invoice.currency,
-      description: 'Upgrade to PRO Plan',
-      customer: {
-        email: dbUser.email,
-        name: dbUser.firstname || 'User',
-      },
-      callback_url: `${process.env.NEXT_PUBLIC_HOST_URL}/payment-success?subscription_id=${subscription.id}`,
-      callback_method: 'get',
-      notes: {
-        userId: dbUser.id,
-        subscriptionId: subscription.id,
-        invoiceId: invoice.id,
-      },
-    });
-    console.log('Payment link created:', paymentLink.short_url);
-
-    // 8. Return the payment link short_url
+    // Return the subscription ID to the client
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url,
+      subscriptionId: subscription.id,
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
