@@ -3,11 +3,12 @@ import { currentUser } from '@clerk/nextjs/server';
 import { client } from '@/lib/prisma';
 import { razorpay } from '@/lib/razorpay';
 
-// Helper function to normalize errors
-function normalizeError(error: unknown): Error {
-  if (error instanceof Error) return error;
-  if (typeof error === 'string') return new Error(error);
-  return new Error('Unknown error occurred');
+interface RazorpayError extends Error {
+  statusCode?: number;
+  error?: {
+    code: string;
+    description: string;
+  };
 }
 
 export async function POST() {
@@ -27,8 +28,6 @@ export async function POST() {
       select: { id: true, email: true, firstname: true }
     });
 
-    console.log('Database user lookup result:', dbUser); // Debug log
-
     if (!dbUser) {
       return NextResponse.json({ 
         status: 404, 
@@ -40,8 +39,6 @@ export async function POST() {
     const planId = process.env.RAZORPAY_PLAN_ID;
     const hostUrl = process.env.NEXT_PUBLIC_HOST_URL;
     
-    console.log('Environment variables:', { planId, hostUrl }); // Debug log
-
     if (!planId || !hostUrl) {
       throw new Error(`Missing configuration: 
         ${!planId ? 'RAZORPAY_PLAN_ID ' : ''}
@@ -49,38 +46,49 @@ export async function POST() {
       `);
     }
 
-    // 4. Razorpay Subscription
-    console.log('Creating Razorpay subscription...');
-    const subscription = await razorpay.subscriptions.create({
+    // 4. Create Razorpay Subscription
+    const startAt = Math.floor(Date.now() / 1000) + 300; // 5-minute buffer
+    const subscriptionParams = {
       plan_id: planId,
       total_count: 12,
       customer_notify: 1,
+      start_at: startAt,
       notes: {
         userId: dbUser.id,
         userEmail: dbUser.email
-      },
-      start_at: Math.floor(Date.now() / 1000),
-    });
+      }
+    };
+
+    console.log('Subscription creation parameters:', subscriptionParams);
+
+    const subscription = await razorpay.subscriptions.create(subscriptionParams)
+      .catch(async (error: RazorpayError) => {
+        console.error('Razorpay API Error:', {
+          status: error.statusCode,
+          code: error.error?.code,
+          description: error.error?.description
+        });
+        throw new Error(`Razorpay Error: ${error.error?.description || 'Subscription creation failed'}`);
+      });
 
     console.log('Subscription created:', JSON.stringify(subscription, null, 2));
 
-    // 5. Invoice Validation
+    // 5. Validate Invoice Generation
     if (!subscription.first_invoice?.id) {
-      throw new Error(`Invoice not generated. Subscription status: ${subscription.status}`);
+      throw new Error(`Invoice generation failed. Current status: ${subscription.status}`);
     }
 
-    // 6. Payment Link Creation
-    console.log('Creating payment link...');
+    // 6. Create Payment Link
     const paymentLink = await razorpay.paymentLink.create({
       invoice_id: subscription.first_invoice.id,
       callback_url: `${hostUrl}/payment-success?subscription_id=${subscription.id}`,
       callback_method: 'get',
+    }).catch((error: any) => {
+      console.error('Payment Link Error:', error);
+      throw new Error('Failed to create payment link');
     });
 
-    console.log('Payment link created:', paymentLink.short_url);
-
-    // 7. Database Update
-    console.log('Updating database subscription...');
+    // 7. Update Database
     await client.subscription.upsert({
       where: { userId: dbUser.id },
       update: { customerId: subscription.id },
@@ -96,19 +104,16 @@ export async function POST() {
       session_url: paymentLink.short_url
     });
 
-  } catch (rawError) {
-    const error = normalizeError(rawError);
+  } catch (error: unknown) {
+    console.error('Full Error Details:', JSON.stringify(error, null, 2));
     
-    console.error('Full Payment Error:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-      rawError: JSON.stringify(rawError, Object.getOwnPropertyNames(rawError))
-    });
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'Unknown error occurred';
 
     return NextResponse.json({
       status: 500,
-      message: error.message
+      message: errorMessage
     });
   }
 }
