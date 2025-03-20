@@ -5,7 +5,7 @@ import { razorpay } from '@/lib/razorpay';
 
 export async function POST(request: Request) {
   try {
-    // Verify webhook signature
+    // 1. Verify the webhook signature.
     const body = await request.text();
     const signature = request.headers.get('x-razorpay-signature');
     if (!signature) {
@@ -20,11 +20,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 400, message: 'Invalid signature' });
     }
 
-    // Parse the webhook payload
+    // 2. Parse the webhook payload.
     const payload = JSON.parse(body);
     console.log('Webhook event received:', payload.event);
 
-    // Handle the payment.captured event
+    // 3. Process the payment.captured event.
     if (payload.event === 'payment.captured') {
       const payment = payload.payload.payment.entity;
       const subscriptionId = payment.subscription_id;
@@ -33,11 +33,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ status: 400, message: 'Missing subscription_id' });
       }
 
-      // Fetch subscription details from Razorpay
+      // 4. Fetch the subscription details from Razorpay.
       const subscription = await razorpay.subscriptions.fetch(subscriptionId);
       console.log('Fetched subscription:', subscription);
 
-      // Extract userId from subscription notes
+      // 5. Extract the userId from the subscription notes.
       const userId = subscription.notes?.userId ? String(subscription.notes.userId) : '';
       if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) {
         console.error('Invalid or missing userId in subscription notes:', subscription.notes);
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       }
       console.log('Found userId:', userId);
 
-      // Update the subscription in your database to switch the plan to PRO
+      // 6. Update the subscription in your database to switch the plan to 'PRO'.
       const updatedSubscription = await client.subscription.update({
         where: { userId },
         data: { plan: 'PRO', customerId: subscriptionId, updatedAt: new Date() },
