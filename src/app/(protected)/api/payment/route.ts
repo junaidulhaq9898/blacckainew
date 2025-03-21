@@ -11,7 +11,7 @@ export async function POST() {
       return NextResponse.json({ status: 401, message: 'Unauthorized' });
     }
 
-    // 2. Retrieve the user from your database.
+    // 2. Retrieve user from your database.
     const dbUser = await client.user.findUnique({
       where: { clerkId: clerkUser.id },
       select: { id: true, email: true, firstname: true },
@@ -20,47 +20,49 @@ export async function POST() {
       return NextResponse.json({ status: 404, message: 'User not found' });
     }
 
-    // 3. Validate the Razorpay plan ID.
+    // 3. Validate Razorpay plan ID.
     const planId = process.env.RAZORPAY_PLAN_ID;
     if (!planId) {
       console.error('RAZORPAY_PLAN_ID missing');
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // 4. Create a Razorpay subscription using the plan ID.
+    // 4. Create a Razorpay subscription using the plan id.
+    // This ensures the amount configured in your Razorpay plan is used.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // e.g., 12 billing cycles
       customer_notify: 1,
       notes: {
-        userId: dbUser.id,
+        userId: dbUser.id,       // NOTE: exact key as needed
         userEmail: dbUser.email,
       },
     });
-    console.log('Subscription created:', subscription.id);
+    console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert the subscription in your database with an initial plan of 'FREE'
-    // (to be updated to 'PRO' via webhook after successful payment).
+    // 5. Upsert subscription in your database.
+    // Here we immediately set the plan to "PRO" so that after payment,
+    // the subscription in your database reflects the upgrade.
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id, plan: 'FREE', updatedAt: new Date() },
+      update: { customerId: subscription.id, plan: 'PRO', updatedAt: new Date() },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE',
+        plan: 'PRO',
       },
     });
 
-    // 6. Fetch the plan details from Razorpay to get the original amount and currency.
+    // 6. Fetch the plan details from Razorpay to retrieve the original amount and currency.
     const planDetails = await razorpay.plans.fetch(planId);
-    // Assuming the plan details structure includes "item.amount" and "item.currency".
-    const amount = planDetails.item.amount;     // e.g., amount in paise
-    const currency = planDetails.item.currency;   // e.g., 'INR'
+    // Assuming the fetched plan has structure: { item: { amount, currency, ... } }
+    const amount = planDetails.item.amount;     // amount in paise
+    const currency = planDetails.item.currency;   // e.g. 'INR'
 
-    // 7. Create a payment link using the plan’s original amount and currency,
-    // with a callback URL to redirect after payment.
+    // 7. Create a payment link using the plan’s original amount/currency.
+    // This payment link includes a callback URL that redirects the user to the dashboard after payment.
     const paymentLink = await razorpay.paymentLink.create({
-      amount, // Use the amount fetched from the plan details.
+      amount, // use the amount from the plan – do not hardcode
       currency,
       description: 'Upgrade to PRO Plan',
       customer: {
@@ -76,7 +78,7 @@ export async function POST() {
     });
     console.log('Payment link created:', paymentLink.short_url);
 
-    // 8. Return the payment link URL for the client to redirect the user.
+    // 8. Return the payment link URL so the client redirects the user to the payment page.
     return NextResponse.json({
       status: 200,
       session_url: paymentLink.short_url,
