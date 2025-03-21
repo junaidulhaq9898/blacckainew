@@ -27,7 +27,7 @@ export async function POST() {
       return NextResponse.json({ status: 500, message: 'Server configuration error' });
     }
 
-    // 4. Create a Razorpay subscription using the plan id
+    // 4. Create a Razorpay subscription using the plan ID.
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       total_count: 12, // e.g., 12 billing cycles
@@ -39,27 +39,23 @@ export async function POST() {
     });
     console.log('Subscription created:', subscription.id, 'for user:', dbUser.id);
 
-    // 5. Upsert subscription in database (plan stays 'FREE' until payment is confirmed)
+    // 5. Upsert subscription in database and immediately set plan to 'PRO'
     await client.subscription.upsert({
       where: { userId: dbUser.id },
-      update: { customerId: subscription.id },
+      update: { customerId: subscription.id, plan: 'PRO', updatedAt: new Date() },
       create: {
         userId: dbUser.id,
         customerId: subscription.id,
-        plan: 'FREE' // Will be updated to 'PRO' via webhook after payment
+        plan: 'PRO'
       }
     });
 
-    // 6. Fetch the original plan details to get amount & currency (avoid hardcoding)
-    const planDetails = await razorpay.plans.fetch(planId);
-    // Assuming the plan details contain an "item" with "amount" and "currency"
-    const amount = planDetails.item.amount;      // amount in paise (e.g., 400 for ₹4.00)
-    const currency = planDetails.item.currency;    // e.g., 'INR'
-
-    // 7. Create a payment link for the initial payment using the plan's original amount
+    // 6. Create a payment link for the initial payment.
+    // Using hardcoded amount ensures that the payment page opens correctly
+    // and the payment is tracked in your Razorpay dashboard.
     const paymentLink = await razorpay.paymentLink.create({
-      amount, // use the amount fetched from the plan
-      currency,
+      amount: 400, // Amount in paise (₹4.00)
+      currency: 'INR',
       description: 'Upgrade to PRO Plan',
       customer: {
         email: dbUser.email,
@@ -74,10 +70,10 @@ export async function POST() {
     });
     console.log('Payment link created:', paymentLink.short_url);
 
-    // 8. Return the payment link short_url for redirection after payment
+    // 7. Return the payment link URL for redirection
     return NextResponse.json({
       status: 200,
-      session_url: paymentLink.short_url
+      session_url: paymentLink.short_url,
     });
   } catch (error: any) {
     console.error('Payment error:', error.message);
