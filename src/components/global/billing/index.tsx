@@ -1,4 +1,6 @@
 // src/components/global/billing/index.tsx
+'use client';
+
 import React from 'react';
 import PaymentCard from './payment-card';
 import { useQuery } from '@tanstack/react-query';
