@@ -1,8 +1,8 @@
+// /src/app/settings/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
 
 export default function SettingsPage() {
   const [subscriptionPlan, setSubscriptionPlan] = useState<string | null>(null);
@@ -11,16 +11,22 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchUserSubscription() {
       try {
-        // Adjust the endpoint to match your backend API
-        const res = await fetch('/api/user');
+        const res = await fetch(`/api/user?timestamp=${new Date().getTime()}`, {
+          cache: 'no-store',
+        });
         if (!res.ok) {
-          throw new Error('Failed to fetch user details');
+          throw new Error(`Failed to fetch user details: ${res.status}`);
         }
         const data = await res.json();
-        // Expecting data.subscriptionPlan to be "FREE" or "PRO"
-        setSubscriptionPlan(data.subscriptionPlan);
+        console.log('Fetched user data:', data);
+
+        const rawPlan = data.subscriptionPlan || 'free';
+        const normalizedPlan = rawPlan.trim().toLowerCase();
+        console.log('Normalized subscription plan:', normalizedPlan);
+        setSubscriptionPlan(normalizedPlan);
       } catch (error) {
         console.error('Error fetching subscription details:', error);
+        setSubscriptionPlan('unknown');
       } finally {
         setLoading(false);
       }
@@ -35,25 +41,37 @@ export default function SettingsPage() {
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Account Settings</h1>
-      {subscriptionPlan === 'FREE' ? (
+      <p>
+        <strong>Subscription Plan:</strong>{' '}
+        {subscriptionPlan ? subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1) : 'Unknown'}
+      </p>
+
+      {subscriptionPlan === 'free' ? (
         <div>
           <h2>Upgrade to Pro</h2>
-          <p>You are currently on the Free plan. Upgrade to unlock premium features!</p>
-          <Link href="/upgrade">
+          <p>You are currently on the Free plan. Upgrade now to unlock premium features!</p>
+          <Link href="/payment">
             <button style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}>
-              Upgrade Now
+              Upgrade to Pro
             </button>
           </Link>
         </div>
-      ) : subscriptionPlan === 'PRO' ? (
+      ) : subscriptionPlan === 'pro' ? (
         <div>
-          <h2>Manage Subscription</h2>
-          <p>As a Pro user, you can manage your payment options and subscription cycle below:</p>
-          <Link href="/manage-subscription">
-            <button style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}>
-              Manage Payment Options
-            </button>
-          </Link>
+          <h2>Manage Your Pro Subscription</h2>
+          <p>You’re on the Pro plan! Manage your payment details or subscription cycle below.</p>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <Link href="/manage-payment">
+              <button style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}>
+                Update Payment Method
+              </button>
+            </Link>
+            <Link href="/manage-subscription">
+              <button style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}>
+                Manage Subscription Cycle
+              </button>
+            </Link>
+          </div>
         </div>
       ) : (
         <div>
