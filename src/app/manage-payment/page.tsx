@@ -1,4 +1,3 @@
-// /src/app/manage-payment/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -14,7 +13,7 @@ export default function ManagePaymentPage() {
       try {
         const res = await fetch('/api/subscription');
         const data = await res.json();
-        setCustomerId(data.customerId); // Assumes customerId from Subscription model
+        setCustomerId(data.customerId);
       } catch (error) {
         console.error('Error fetching subscription:', error);
       } finally {
@@ -25,9 +24,7 @@ export default function ManagePaymentPage() {
   }, []);
 
   const handleUpdatePayment = () => {
-    // Placeholder for Razorpay integration
     alert('This feature would open a Razorpay portal to update your card details.');
-    // Example: window.location.href = 'https://razorpay.com/update-payment';
   };
 
   if (loading) return <div>Loading...</div>;
@@ -37,10 +34,7 @@ export default function ManagePaymentPage() {
     <div style={{ padding: '2rem' }}>
       <h1>Update Payment Method</h1>
       <p>Update your card details for subscription payments.</p>
-      <button
-        onClick={handleUpdatePayment}
-        style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}
-      >
+      <button onClick={handleUpdatePayment} style={{ padding: '0.75rem 1.5rem', cursor: 'pointer' }}>
         Update Card
       </button>
     </div>

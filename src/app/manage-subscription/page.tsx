@@ -1,4 +1,3 @@
-// /src/app/manage-subscription/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -25,9 +24,7 @@ export default function ManageSubscriptionCycle() {
   }, []);
 
   const handleChangeCycle = () => {
-    // Placeholder for Razorpay subscription update
     alert('This would allow changing your billing cycle (e.g., monthly to yearly).');
-    // Example: Integrate Razorpay API to update subscription cycle
   };
 
   if (loading) return <div>Loading...</div>;
@@ -38,10 +35,7 @@ export default function ManageSubscriptionCycle() {
       <h1>Manage Subscription Cycle</h1>
       <p>Current Plan: Pro</p>
       <p>Manage your billing cycle below.</p>
-      <button
-        onClick={handleChangeCycle}
-        style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}
-      >
+      <button onClick={handleChangeCycle} style={{ padding: '0.75rem 1.5rem', cursor: 'pointer' }}>
         Change Billing Cycle
       </button>
     </div>
