@@ -14,12 +14,14 @@ export default function EditProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Fetch user data from your API
   useEffect(() => {
     async function fetchUser() {
       try {
-        const res = await fetch(`/api/user?timestamp=${new Date().getTime()}`, {
-          cache: 'no-store',
-        });
+        const res = await fetch(
+          `/api/user?timestamp=${new Date().getTime()}`,
+          { cache: 'no-store' }
+        );
         if (!res.ok) throw new Error('Failed to fetch user data');
         const data = await res.json();
         setFormData({
@@ -50,12 +52,16 @@ export default function EditProfilePage() {
       const res = await fetch('/api/user/update', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          firstname: formData.firstname,
+          lastname: formData.lastname,
+        }),
       });
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || 'Failed to update profile');
       }
+      // On success, redirect to the settings page.
       router.push('/dashboard/settings');
     } catch (err: any) {
       console.error('Error updating profile:', err);
@@ -76,10 +82,14 @@ export default function EditProfilePage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
       <div className="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-lg">
         <h1 className="text-2xl font-bold mb-6">Edit Profile</h1>
-        {error && <div className="mb-4 text-red-500">{error}</div>}
+        {error && (
+          <div className="mb-4 text-red-500 text-sm">
+            {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="firstname" className="block text-sm font-medium mb-1">
+            <label htmlFor="firstname" className="block text-sm font-medium text-gray-300">
               First Name
             </label>
             <input
@@ -87,11 +97,11 @@ export default function EditProfilePage() {
               type="text"
               value={formData.firstname}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-600 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="mt-1 block w-full border border-gray-600 rounded-md p-2 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="mb-4">
-            <label htmlFor="lastname" className="block text-sm font-medium mb-1">
+            <label htmlFor="lastname" className="block text-sm font-medium text-gray-300">
               Last Name
             </label>
             <input
@@ -99,25 +109,25 @@ export default function EditProfilePage() {
               type="text"
               value={formData.lastname}
               onChange={handleChange}
-              className="w-full p-2 border border-gray-600 rounded bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="mt-1 block w-full border border-gray-600 rounded-md p-2 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="mb-6">
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-300">
               Email
             </label>
             <input
               id="email"
               type="email"
-              value={formData.email}
+              value={formData.email || ''}
               disabled
-              className="w-full p-2 border border-gray-600 rounded bg-gray-600 text-gray-300 cursor-not-allowed"
+              className="mt-1 block w-full border border-gray-600 rounded-md p-2 bg-gray-600 text-gray-300 cursor-not-allowed"
             />
           </div>
           <button
             type="submit"
             disabled={saving}
-            className="w-full py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
