@@ -67,18 +67,7 @@ export default function SettingsPage() {
                 <li>Priority customer support</li>
                 <li>Custom branding options</li>
               </ul>
-              <div className="mt-4 flex gap-4">
-                <Link href="/manage-payment">
-                  <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    Update Payment
-                  </button>
-                </Link>
-                <Link href="/manage-subscription">
-                  <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    Manage Subscription
-                  </button>
-                </Link>
-              </div>
+             
             </div>
           ) : (
             <div className="mt-4 text-blue-200">
@@ -95,18 +84,7 @@ export default function SettingsPage() {
           )}
         </div>
         
-        {/* Security Section */}
-        <div className="bg-white/10 rounded-2xl p-8 border border-white/20">
-          <h2 className="text-2xl font-semibold text-white">Security</h2>
-          <p className="mt-4 text-blue-200">Manage your account security settings.</p>
-          <div className="mt-4">
-            <Link href="/account/2fa">
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-                Set Up Two-Factor Authentication
-              </button>
-            </Link>
-          </div>
-        </div>
+        
       </div>
     </section>
   );

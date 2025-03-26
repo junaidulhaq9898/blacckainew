@@ -1,27 +1,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-export default function SettingsPage() {
-  const [userData, setUserData] = useState<any>(null);
+export default function EditProfilePage() {
+  const router = useRouter();
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function fetchUser() {
       try {
-        // Fetch with no-store and timestamp to avoid caching issues
-        const res = await fetch('/api/user?timestamp=' + new Date().getTime(), { cache: 'no-store' });
-        if (!res.ok) throw new Error('API error');
+        const res = await fetch(`/api/user?timestamp=${new Date().getTime()}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch user data');
         const data = await res.json();
-        console.log('Fetched user data:', data);
-        // Normalize the subscription plan (if provided)
-        if (data.subscriptionPlan) {
-          data.subscriptionPlan = data.subscriptionPlan.trim().toLowerCase();
-        }
-        setUserData(data);
-      } catch (error) {
-        console.error('Error fetching user data:', error);
+        // Combine firstname and lastname into a full name
+        const name = `${data.firstname || ''} ${data.lastname || ''}`.trim();
+        setFullName(name);
+        setEmail(data.email || '');
+      } catch (err: any) {
+        console.error('Error fetching user:', err);
+        setError(err.message || 'Failed to fetch user data');
       } finally {
         setLoading(false);
       }
@@ -29,85 +31,77 @@ export default function SettingsPage() {
     fetchUser();
   }, []);
 
-  if (loading) return <div>Loading your account settings...</div>;
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/user/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to update profile');
+      }
+      // Create URL-friendly full name: lowercase and hyphenated
+      const urlName = encodeURIComponent(fullName.toLowerCase().replace(/\s+/g, '-'));
+      router.push(`/dashboard/${urlName}`);
+    } catch (err: any) {
+      console.error('Error updating profile:', err);
+      setError(err.message || 'Error updating profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white text-xl">
+        Loading your profile...
+      </div>
+    );
 
   return (
-    <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg min-h-screen">
-      {/* Background Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
-      
-      <div className="relative container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-white mb-8">Account Settings</h1>
-        
-        {/* Profile Section */}
-        <div className="bg-white/10 rounded-2xl p-8 border border-white/20 mb-8">
-          <h2 className="text-2xl font-semibold text-white">Profile Information</h2>
-          <p className="mt-4 text-blue-200"><strong>Name:</strong> {userData.firstname} {userData.lastname || ''}</p>
-          <p className="mt-2 text-blue-200"><strong>Email:</strong> {userData.email}</p>
-          <div className="mt-4">
-            <Link href="/profile/edit">
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-                Edit Name
-              </button>
-            </Link>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-900 via-blue-900 to-bg text-white">
+      <div className="w-full max-w-md p-8 bg-gray-800 rounded-2xl shadow-lg">
+        <h1 className="text-4xl font-bold mb-8 text-center">Edit Profile</h1>
+        {error && <div className="mb-4 text-red-500 text-center">{error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="mb-6">
+            <label htmlFor="fullName" className="block text-lg font-medium text-blue-200 mb-2">
+              Full Name
+            </label>
+            <input
+              id="fullName"
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full p-3 border border-gray-600 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-        </div>
-        
-        {/* Subscription Section */}
-        <div className="bg-white/10 rounded-2xl p-8 border border-white/20 mb-8">
-          <h2 className="text-2xl font-semibold text-white">Subscription Plan</h2>
-          {userData.subscriptionPlan === 'pro' ? (
-            <div className="mt-4 text-blue-200">
-              <p className="font-bold">You are on the Pro Plan</p>
-              <ul className="list-disc ml-6 mt-2">
-                <li>Smart AI - $99/month</li>
-                <li>All Free Plan features</li>
-                <li>AI-powered response generation</li>
-                <li>Advanced analytics and insights</li>
-                <li>Priority customer support</li>
-                <li>Custom branding options</li>
-              </ul>
-              <div className="mt-4 flex gap-4">
-                <Link href="/manage-payment">
-                  <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    Update Payment
-                  </button>
-                </Link>
-                <Link href="/manage-subscription">
-                  <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    Manage Subscription
-                  </button>
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 text-blue-200">
-              <p className="font-bold">You are on the Free Plan</p>
-              <p className="mt-2">Upgrade to Pro to unlock premium features and enhanced support.</p>
-              <div className="mt-4">
-                <Link href="/upgrade">
-                  <button className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
-                    Upgrade to Pro
-                  </button>
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Security Section */}
-        <div className="bg-white/10 rounded-2xl p-8 border border-white/20">
-          <h2 className="text-2xl font-semibold text-white">Security</h2>
-          <p className="mt-4 text-blue-200">Manage your account security settings.</p>
-          <div className="mt-4">
-            <Link href="/account/2fa">
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-                Set Up Two-Factor Authentication
-              </button>
-            </Link>
+          <div className="mb-8">
+            <label htmlFor="email" className="block text-lg font-medium text-blue-200 mb-2">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              disabled
+              className="w-full p-3 border border-gray-600 rounded-lg bg-gray-600 text-gray-300 cursor-not-allowed"
+            />
           </div>
-        </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-3 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </form>
       </div>
-    </section>
+    </div>
   );
 }
