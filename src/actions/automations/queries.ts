@@ -1,13 +1,11 @@
-// src/actions/automations/queries.ts - 'use server'
-
+// src/actions/automations/queries.ts
 import { client } from '@/lib/prisma'
 import { v4 } from 'uuid'
 
+// Create automation
 export const createAutomation = async (clerkId: string, id?: string) => {
   return await client.user.update({
-    where: {
-      clerkId,
-    },
+    where: { clerkId },
     data: {
       automations: {
         create: {
@@ -18,16 +16,13 @@ export const createAutomation = async (clerkId: string, id?: string) => {
   })
 }
 
+// Get automations
 export const getAutomations = async (clerkId: string) => {
   return await client.user.findUnique({
-    where: {
-      clerkId,
-    },
+    where: { clerkId },
     select: {
       automations: {
-        orderBy: {
-          createdAt: 'asc',
-        },
+        orderBy: { createdAt: 'asc' },
         include: {
           keywords: true,
           listener: true,
@@ -37,11 +32,10 @@ export const getAutomations = async (clerkId: string) => {
   })
 }
 
+// Find automation
 export const findAutomation = async (id: string) => {
   return await client.automation.findUnique({
-    where: {
-      id,
-    },
+    where: { id },
     include: {
       keywords: true,
       trigger: true,
@@ -57,23 +51,18 @@ export const findAutomation = async (id: string) => {
   })
 }
 
+// Update automation
 export const updateAutomation = async (
   id: string,
-  update: {
-    name?: string
-    active?: boolean
-  }
+  update: { name?: string; active?: boolean }
 ) => {
   return await client.automation.update({
     where: { id },
-    data: {
-      name: update.name,
-      active: update.active,
-    },
+    data: { name: update.name, active: update.active },
   })
 }
 
-// Modify addListener to ensure commentReply is properly saved
+// Add listener
 export const addListener = async (
   automationId: string,
   listener: 'SMARTAI' | 'MESSAGE',
@@ -81,21 +70,20 @@ export const addListener = async (
   reply?: string
 ) => {
   return await client.automation.update({
-    where: {
-      id: automationId,
-    },
+    where: { id: automationId },
     data: {
       listener: {
         create: {
           listener,
           prompt,
-          commentReply: reply, // Ensure reply is saved
+          commentReply: reply,
         },
       },
     },
   })
 }
 
+// Add trigger
 export const addTrigger = async (automationId: string, trigger: string[]) => {
   if (trigger.length === 2) {
     return await client.automation.update({
@@ -110,40 +98,35 @@ export const addTrigger = async (automationId: string, trigger: string[]) => {
     })
   }
   return await client.automation.update({
-    where: {
-      id: automationId,
-    },
+    where: { id: automationId },
     data: {
       trigger: {
-        create: {
-          type: trigger[0],
-        },
+        create: { type: trigger[0] },
       },
     },
   })
 }
 
+// Add keyword
 export const addKeyWord = async (automationId: string, keyword: string) => {
   return client.automation.update({
-    where: {
-      id: automationId,
-    },
+    where: { id: automationId },
     data: {
       keywords: {
-        create: {
-          word: keyword,
-        },
+        create: { word: keyword },
       },
     },
   })
 }
 
+// Delete keyword query
 export const deleteKeywordQuery = async (id: string) => {
   return client.keyword.delete({
     where: { id },
   })
 }
 
+// Add post
 export const addPost = async (
   autmationId: string,
   posts: {
@@ -154,9 +137,7 @@ export const addPost = async (
   }[]
 ) => {
   return await client.automation.update({
-    where: {
-      id: autmationId,
-    },
+    where: { id: autmationId },
     data: {
       posts: {
         createMany: {
@@ -166,3 +147,4 @@ export const addPost = async (
     },
   })
 }
+
