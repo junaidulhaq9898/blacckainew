@@ -1,6 +1,8 @@
 // src/actions/webhook/queries.ts
 import { client } from '@/lib/prisma';
+import axios from 'axios';
 
+// Match keyword in the comment text
 export const matchKeyword = async (keyword: string) => {
   return await client.keyword.findFirst({
     where: {
@@ -12,6 +14,28 @@ export const matchKeyword = async (keyword: string) => {
   });
 };
 
+// Send a comment reply
+export const sendCommentReply = async (
+  userId: string,
+  commentId: string,
+  reply: string,
+  token: string
+) => {
+  console.log('Sending reply to comment:', commentId);
+  const response = await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/comments`,
+    { message: reply, comment_id: commentId },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return response.data;
+};
+
+// Existing functions
 export const getKeywordAutomation = async (
   automationId: string,
   dm: boolean
@@ -24,7 +48,7 @@ export const getKeywordAutomation = async (
       dms: dm,
       trigger: {
         where: {
-          type: dm ? 'DM' : 'COMMENT',
+          type: dm ? 'DM' : 'COMMENT', // Ensure COMMENT trigger is processed
         },
       },
       listener: true,
@@ -46,6 +70,7 @@ export const getKeywordAutomation = async (
   });
 };
 
+// Track responses (comments or DM)
 export const trackResponses = async (
   automationId: string,
   type: 'COMMENT' | 'DM'
@@ -73,6 +98,7 @@ export const trackResponses = async (
   }
 };
 
+// Other existing functions remain untouched
 export const createChatHistory = (
   automationId: string,
   sender: string,

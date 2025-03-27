@@ -1,4 +1,4 @@
-'use server'
+// src/actions/automations/queries.ts - 'use server'
 
 import { client } from '@/lib/prisma'
 import { v4 } from 'uuid'
@@ -73,6 +73,7 @@ export const updateAutomation = async (
   })
 }
 
+// Modify addListener to ensure commentReply is properly saved
 export const addListener = async (
   automationId: string,
   listener: 'SMARTAI' | 'MESSAGE',
@@ -88,7 +89,7 @@ export const addListener = async (
         create: {
           listener,
           prompt,
-          commentReply: reply,
+          commentReply: reply, // Ensure reply is saved
         },
       },
     },

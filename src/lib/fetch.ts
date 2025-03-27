@@ -1,6 +1,8 @@
 // src/lib/fetch.ts
 import axios from 'axios';
 
+// Original code remains intact. No changes here.
+
 export const refreshToken = async (token: string) => {
   const refresh_token = await axios.get(
     `${process.env.INSTAGRAM_BASE_URL}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`
@@ -54,6 +56,7 @@ export const sendPrivateMessage = async (
   return response.data;
 };
 
+// Generate access token logic stays the same
 export const generateTokens = async (code: string) => {
   const insta_form = new FormData();
   insta_form.append('client_id', process.env.INSTAGRAM_CLIENT_ID as string);
@@ -84,4 +87,25 @@ export const generateTokens = async (code: string) => {
     access_token: long_token.data.access_token,
     user_id: userId,
   };
+};
+
+// Added logic to handle comment replies (comment automation fix)
+export const sendCommentReply = async (
+  userId: string,
+  commentId: string,
+  reply: string,
+  token: string
+) => {
+  console.log('Sending reply to comment:', commentId);
+  const response = await axios.post(
+    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/comments`,
+    { message: reply, comment_id: commentId },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return response.data;
 };
