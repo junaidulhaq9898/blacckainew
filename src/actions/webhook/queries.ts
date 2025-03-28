@@ -28,18 +28,40 @@ export const getKeywordAutomation = async (
         },
       },
       listener: true,
+      keywords: true,
       User: {
-        select: {
+        include: {
           subscription: {
             select: {
+              id: true,
+              userId: true,
+              createdAt: true,
               plan: true,
+              updatedAt: true,
+              customerId: true,
             },
           },
           integrations: {
             select: {
+              id: true,
+              name: true,
+              createdAt: true,
+              userId: true,
               token: true,
+              expiresAt: true,
+              instagramId: true,
             },
           },
+        },
+        select: {
+          id: true,
+          clerkId: true,
+          email: true,
+          firstname: true,
+          lastname: true,
+          createdAt: true,
+          subscription: true,
+          integrations: true,
         },
       },
     },

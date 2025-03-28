@@ -8,18 +8,67 @@ import {
   matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries';
-import { sendDM } from '@/lib/fetch';
+import { sendDM, sendCommentReply } from '@/lib/fetch';
 import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Webhook verification endpoint
+interface Automation {
+  id: string;
+  name: string;
+  active: boolean;
+  userId: string | null;
+  keywords: { id: string; word: string; automationId: string | null }[];
+  listener: {
+    id: string;
+    automationId: string;
+    listener: 'SMARTAI' | 'MESSAGE';
+    prompt: string;
+    commentReply?: string | null;
+    dmCount: number;
+    commentCount: number;
+  } | null;
+  trigger: { id: string; type: string; automationId: string | null }[];
+  dms: {
+    id: string;
+    automationId: string | null;
+    createdAt: Date;
+    senderId: string | null;
+    reciever: string | null;
+    message: string | null;
+  }[];
+  User: {
+    id: string;
+    clerkId: string;
+    email: string;
+    firstname: string | null;
+    lastname: string | null;
+    createdAt: Date;
+    subscription?: {
+      id: string;
+      userId: string | null;
+      createdAt: Date;
+      plan: 'PRO' | 'FREE';
+      updatedAt: Date;
+      customerId: string | null;
+    } | null;
+    integrations: {
+      id: string;
+      name: 'INSTAGRAM';
+      createdAt: Date;
+      userId: string | null;
+      token: string;
+      expiresAt: Date | null;
+      instagramId: string | null;
+    }[];
+  } | null;
+}
+
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
 }
 
-// Main webhook handler
 export async function POST(req: NextRequest) {
   try {
     const webhook_payload = await req.json();
@@ -33,16 +82,96 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("Entry ID:", entry.id);
+
+    if (entry.changes && entry.changes[0].field === 'comments') {
+      const commentData = entry.changes[0].value;
+      const commentText = commentData.text.toLowerCase();
+      const commentId = commentData.id;
+      const postId = commentData.media.id;
+      const commenterId = commentData.from.id;
+
+      console.log("📝 Processing comment:", commentText);
+
+      // Find automation linked to the post, ensuring keywords are included
+      const automation: Automation | null = await client.automation.findFirst({
+        where: {
+          posts: {
+            some: {
+              postid: postId,
+            },
+          },
+        },
+        include: {
+          keywords: true,
+          listener: true,
+          trigger: true,
+          dms: true,
+          User: {
+            include: {
+              integrations: true,
+              subscription: true,
+            },
+          },
+        },
+      });
+
+      if (!automation) {
+        console.log("❌ No automation found for post ID:", postId);
+        return NextResponse.json({ message: 'No automation found' }, { status: 200 });
+      }
+
+      // Check if comment contains any keywords
+      const keywordMatch = automation.keywords.some((keyword) =>
+        commentText.includes(keyword.word.toLowerCase())
+      );
+      if (!keywordMatch) {
+        console.log("❌ No keyword match found in comment");
+        return NextResponse.json({ message: 'No keyword match' }, { status: 200 });
+      }
+
+      // Get Instagram token
+      const token = automation.User?.integrations?.[0]?.token;
+      if (!token) {
+        console.log("❌ No valid integration token found");
+        return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
+      }
+
+      // Reply to comment if configured
+      if (automation.listener?.commentReply) {
+        try {
+          console.log("📤 Sending comment reply:", automation.listener.commentReply);
+          const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
+          console.log("✅ Comment reply sent successfully:", replyResponse);
+          await trackResponses(automation.id, 'COMMENT');
+        } catch (error: unknown) {
+          console.error("❌ Error sending comment reply:", error);
+        }
+      }
+
+      // Send DM if configured
+      if (automation.listener?.prompt) {
+        try {
+          console.log("📤 Sending DM:", automation.listener.prompt);
+          const dmResponse = await sendDM(entry.id, commenterId, automation.listener.prompt, token);
+          console.log("✅ DM sent successfully:", dmResponse);
+          await trackResponses(automation.id, 'DM');
+        } catch (error: unknown) {
+          console.error("❌ Error sending DM:", error);
+        }
+      }
+
+      console.log("✅ Comment processing completed");
+      return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
+    }
+
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
 
-    // Skip if it's a read receipt or echo message
     if (messaging?.read || messaging?.message?.is_echo) {
       console.log("Skipping read receipt or echo message");
       return NextResponse.json({ message: 'Receipt processed' }, { status: 200 });
     }
 
-    // Process actual message
     if (messaging?.message?.text) {
       const messageText = messaging.message.text;
       console.log("📝 Processing message:", messageText);
@@ -50,23 +179,19 @@ export async function POST(req: NextRequest) {
       const userId = messaging.sender.id;
       const accountId = entry.id;
 
-      // Check if there's an ongoing conversation
       const isOngoing = await hasRecentMessages(userId, accountId);
       console.log("🔄 Ongoing conversation:", isOngoing);
 
-      let automation;
+      let automation: Automation | null = null;
       if (!isOngoing) {
-        // New conversation: check for keyword match
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
-
         if (matcher?.automationId) {
           console.log("✅ Found matching automation ID:", matcher.automationId);
           automation = await getKeywordAutomation(matcher.automationId, true);
           console.log("🤖 Automation details:", automation?.id);
         }
       } else {
-        // Ongoing conversation: fetch the automation from history
         const { automationId } = await getChatHistory(userId, accountId);
         if (automationId) {
           automation = await getKeywordAutomation(automationId, true);
@@ -75,13 +200,9 @@ export async function POST(req: NextRequest) {
 
       if (!automation?.User?.integrations?.[0]?.token) {
         console.log("❌ No valid integration token found");
-        return NextResponse.json(
-          { message: 'No valid integration token' },
-          { status: 200 }
-        );
+        return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Handle MESSAGE listener
       if (automation.listener?.listener === 'MESSAGE') {
         try {
           console.log("📤 Attempting to send DM:", {
@@ -89,16 +210,13 @@ export async function POST(req: NextRequest) {
             senderId: userId,
             prompt: automation.listener.prompt,
           });
-
           const direct_message = await sendDM(
             accountId,
             userId,
             automation.listener.prompt,
             automation.User.integrations[0].token
           );
-
           console.log("📬 DM Response:", direct_message);
-
           if (direct_message.status === 200) {
             await trackResponses(automation.id, 'DM');
             console.log("✅ Message sent successfully");
@@ -106,29 +224,20 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error sending DM:", error);
-          return NextResponse.json(
-            { message: 'Error sending message' },
-            { status: 500 }
-          );
+          return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
         }
       }
 
-      // Handle SMARTAI listener for PRO plan users
       if (
         automation.listener?.listener === 'SMARTAI' &&
         automation.User?.subscription?.plan === 'PRO'
       ) {
         try {
           console.log("🤖 Processing SMARTAI response");
-
-          // Fetch conversation history (limit to last 5 messages for performance)
           const { history } = await getChatHistory(userId, accountId);
-          const limitedHistory = history.slice(-5); // Limit to last 5 messages
-
-          // Add the new user message to the history
+          const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
-          // Generate AI response with full history
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [
@@ -144,22 +253,8 @@ export async function POST(req: NextRequest) {
 
           if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
-
-            // Log user's message
-            await createChatHistory(
-              automation.id,
-              userId,       // sender: user
-              accountId,    // receiver: account
-              messageText
-            );
-
-            // Log AI's response
-            await createChatHistory(
-              automation.id,
-              accountId,    // sender: account
-              userId,       // receiver: user
-              aiResponse
-            );
+            await createChatHistory(automation.id, userId, accountId, messageText);
+            await createChatHistory(automation.id, accountId, userId, aiResponse);
 
             console.log("📤 Sending AI response as DM:", aiResponse);
             const direct_message = await sendDM(
@@ -170,34 +265,21 @@ export async function POST(req: NextRequest) {
             );
 
             console.log("📬 DM Response:", direct_message);
-
             if (direct_message.status === 200) {
               await trackResponses(automation.id, 'DM');
               console.log("✅ AI response sent successfully");
-              return NextResponse.json(
-                { message: 'AI response sent' },
-                { status: 200 }
-              );
+              return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
             } else {
               console.error("❌ DM failed with status:", direct_message.status);
-              return NextResponse.json(
-                { message: 'Failed to send AI response' },
-                { status: 500 }
-              );
+              return NextResponse.json({ message: 'Failed to send AI response' }, { status: 500 });
             }
           } else {
             console.error("❌ No content in AI response:", smart_ai_message);
-            return NextResponse.json(
-              { message: 'No AI response content' },
-              { status: 500 }
-            );
+            return NextResponse.json({ message: 'No AI response content' }, { status: 500 });
           }
         } catch (error) {
           console.error("❌ Error in SMARTAI block:", error);
-          return NextResponse.json(
-            { message: 'Error processing AI response' },
-            { status: 500 }
-          );
+          return NextResponse.json({ message: 'Error processing AI response' }, { status: 500 });
         }
       } else {
         console.log("❌ No SMARTAI automation or insufficient subscription");
@@ -209,9 +291,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'No automation set' }, { status: 200 });
   } catch (error) {
     console.error("❌ Webhook Error:", error);
-    return NextResponse.json(
-      { message: 'Error processing webhook' },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: 'Error processing webhook' }, { status: 500 });
   }
+}
+
+async function findAutomationByPostId(postId: string): Promise<Automation | null> {
+  return client.automation.findFirst({
+    where: {
+      posts: {
+        some: {
+          postid: postId,
+        },
+      },
+    },
+    include: {
+      keywords: true,
+      listener: true,
+      trigger: true,
+      dms: true,
+      User: {
+        include: {
+          integrations: true,
+          subscription: true,
+        },
+      },
+    },
+  });
 }

@@ -39,7 +39,7 @@ export const sendCommentReply = async (
   console.log('Sending reply to comment:', commentId);
   try {
     const response = await axios.post(
-      `${process.env.INSTAGRAM_BASE_URL}/v1/comments/${commentId}/replies`,
+      `https://graph.instagram.com/v21.0/${commentId}/replies`, // Use Graph API explicitly
       {
         message: message,
       },
@@ -73,7 +73,7 @@ export const generateTokens = async (code: string) => {
   });
 
   const token = await shortTokenRes.json();
-  const userId = String(token.user_id); // Ensure user_id is a string
+  const userId = String(token.user_id);
 
   if (!token.access_token || !userId) {
     throw new Error('Failed to fetch access token or user ID');
