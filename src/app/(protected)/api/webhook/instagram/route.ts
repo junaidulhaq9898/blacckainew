@@ -8,7 +8,7 @@ import {
   matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries';
-import { sendDM, sendCommentReply } from '@/lib/fetch'; // Added sendCommentReply
+import { sendDM, sendCommentReply } from '@/lib/fetch';
 import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
@@ -209,16 +209,17 @@ export async function POST(req: NextRequest) {
       // Handle MESSAGE listener
       if (automation.listener?.listener === 'MESSAGE') {
         try {
+          const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
           console.log("📤 Attempting to send DM:", {
             entryId: accountId,
             senderId: userId,
-            prompt: automation.listener.prompt,
+            message: messageResponse,
           });
 
           const direct_message = await sendDM(
             accountId,
             userId,
-            automation.listener.prompt,
+            messageResponse, // Short, static response instead of prompt
             automation.User.integrations[0].token
           );
 
@@ -259,7 +260,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
+                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`, // Long prompt used for training
               },
               ...limitedHistory,
             ],
@@ -290,7 +291,7 @@ export async function POST(req: NextRequest) {
             const direct_message = await sendDM(
               accountId,
               userId,
-              aiResponse,
+              aiResponse, // Short AI-generated response
               automation.User.integrations[0].token
             );
 
