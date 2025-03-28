@@ -1,6 +1,6 @@
 // src/actions/webhook/queries.ts
 import { client } from '@/lib/prisma';
-import axios from 'axios';
+import { sendCommentReply } from '@/lib/fetch';
 
 export const matchKeyword = async (keyword: string) => {
   return await client.keyword.findFirst({
@@ -31,7 +31,6 @@ export const getKeywordAutomation = async (
       listener: true,
       User: {
         select: {
-          id: true, // Added: ensure User id is selected for comment reply
           subscription: {
             select: {
               plan: true,
@@ -132,11 +131,7 @@ export const getChatHistory = async (userId: string, accountId: string) => {
   };
 };
 
-export const hasRecentMessages = async (
-  userId: string,
-  accountId: string,
-  minutes: number = 5
-) => {
+export const hasRecentMessages = async (userId: string, accountId: string, minutes: number = 5) => {
   const recentTime = new Date(Date.now() - minutes * 60 * 1000);
   const recentMessages = await client.dms.findMany({
     where: {
@@ -149,67 +144,30 @@ export const hasRecentMessages = async (
   return recentMessages.length > 0;
 };
 
-// ----------------------------------------------------------------
-// COMMENT AUTOMATION ADDITIONS (do not alter any existing functions above)
-// ----------------------------------------------------------------
-
-// Function to send a comment reply using Instagram API
-export const sendCommentReply = async (
-  userId: string,
-  commentId: string,
-  reply: string,
-  token: string
+// NEW: Function to handle comment reply
+export const handleCommentReply = async (
+  commentId: string,      // Instagram comment ID to reply to
+  automationId: string,   // Automation ID associated with this comment
+  token: string           // Access token for Instagram API
 ) => {
-  console.log('Sending reply to comment:', commentId);
-  const response = await axios.post(
-    `${process.env.INSTAGRAM_BASE_URL}/v21.0/${userId}/comments`,
-    { message: reply, comment_id: commentId },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+  try {
+    // Fetch the automation including its listener data
+    const automation = await client.automation.findUnique({
+      where: { id: automationId },
+      include: { listener: true },
+    });
+    if (automation && automation.listener && automation.listener.commentReply) {
+      const replyText = automation.listener.commentReply;
+      // Send reply via Instagram API using the helper function
+      const result = await sendCommentReply(commentId, replyText, token);
+      console.log('Comment reply sent:', result);
+      return result;
+    } else {
+      console.log('No comment reply configured for automation:', automationId);
+      return null;
     }
-  );
-  return response.data;
-};
-
-// Process a comment: check if commentText contains any keyword and send reply if matched
-export const processComment = async (
-  commentId: string,
-  commentText: string,
-  automationId: string
-) => {
-  // Fetch all keywords for this automation
-  const keywords = await client.keyword.findMany({
-    where: { automationId },
-  });
-
-  // Check if any keyword is in the comment text
-  for (const keyword of keywords) {
-    if (commentText.toLowerCase().includes(keyword.word.toLowerCase())) {
-      console.log(`Keyword matched: ${keyword.word}`);
-      // Retrieve the automation (with User and listener details)
-      const automation = await getKeywordAutomation(automationId, false);
-      if (automation?.User) {
-        const commentReply = automation.listener?.commentReply;
-        if (commentReply) {
-          // Extract token from the first integration (if available)
-          const token = automation.User.integrations?.[0]?.token;
-          if (token) {
-            // Send the reply to the comment using automation.User.id as userId
-            await sendCommentReply(automation.User.id, commentId, commentReply, token);
-            // Track the response (increment comment count)
-            await trackResponses(automationId, 'COMMENT');
-          } else {
-            console.error('Token not found in integrations.');
-          }
-        } else {
-          console.log('No comment reply set for this automation.');
-        }
-      } else {
-        console.error('User information not found in automation.');
-      }
-    }
+  } catch (error) {
+    console.error('Error handling comment reply:', error);
+    throw error;
   }
 };
