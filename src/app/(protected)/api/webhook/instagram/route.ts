@@ -59,9 +59,17 @@ export async function POST(req: NextRequest) {
           trigger: true,
           dms: true,
           User: {
-            include: {
-              integrations: true,
-              subscription: true,
+            select: {
+              subscription: {
+                select: {
+                  plan: true,
+                },
+              },
+              integrations: {
+                select: {
+                  token: true,
+                },
+              },
             },
           },
         },
