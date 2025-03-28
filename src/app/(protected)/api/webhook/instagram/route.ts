@@ -109,9 +109,9 @@ export async function POST(req: NextRequest) {
       }
 
       // Send DM after comment based on subscription plan
-      if (automation.User?.subscription?.plan === 'PRO' && automation.listener?.listener === 'SMARTAI') {
+      if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Processing SMARTAI response for PRO user");
+          console.log("🤖 Processing AI-powered DM for PRO user");
           const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
@@ -139,10 +139,10 @@ export async function POST(req: NextRequest) {
             console.error("❌ No content in AI response:", smart_ai_message);
           }
         } catch (error: unknown) {
-          console.error("❌ Error sending SMARTAI DM:", error);
+          console.error("❌ Error sending AI-powered DM:", error);
         }
       } else {
-        // Free plan or non-SMARTAI: send template message
+        // Free plan: send template message
         try {
           const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
           console.log("📤 Sending template DM:", templateMessage);
@@ -206,8 +206,8 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Handle MESSAGE listener
-      if (automation.listener?.listener === 'MESSAGE') {
+      // Handle MESSAGE listener (non-PRO or non-SMARTAI)
+      if (automation.listener?.listener === 'MESSAGE' || automation.User?.subscription?.plan !== 'PRO') {
         try {
           const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
           console.log("📤 Attempting to send DM:", {
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
           const direct_message = await sendDM(
             accountId,
             userId,
-            messageResponse, // Short, static response instead of prompt
+            messageResponse,
             automation.User.integrations[0].token
           );
 
@@ -239,13 +239,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Handle SMARTAI listener for PRO plan users
-      if (
-        automation.listener?.listener === 'SMARTAI' &&
-        automation.User?.subscription?.plan === 'PRO'
-      ) {
+      // Handle SMARTAI listener for PRO plan users (includes ongoing chat)
+      if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Processing SMARTAI response");
+          console.log("🤖 Processing SMARTAI response for PRO user");
 
           // Fetch conversation history (limit to last 5 messages for performance)
           const { history } = await getChatHistory(userId, accountId);
@@ -260,7 +257,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`, // Long prompt used for training
+                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
               },
               ...limitedHistory,
             ],
@@ -291,7 +288,7 @@ export async function POST(req: NextRequest) {
             const direct_message = await sendDM(
               accountId,
               userId,
-              aiResponse, // Short AI-generated response
+              aiResponse,
               automation.User.integrations[0].token
             );
 
@@ -325,9 +322,6 @@ export async function POST(req: NextRequest) {
             { status: 500 }
           );
         }
-      } else {
-        console.log("❌ No SMARTAI automation or insufficient subscription");
-        return NextResponse.json({ message: 'No automation set' }, { status: 200 });
       }
     }
 
