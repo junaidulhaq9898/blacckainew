@@ -148,11 +148,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Send DM if configured
+      // Send DM if configured, truncating to 1000 characters
       if (automation.listener?.prompt) {
         try {
-          console.log("📤 Sending DM:", automation.listener.prompt);
-          const dmResponse = await sendDM(entry.id, commenterId, automation.listener.prompt, token);
+          const truncatedPrompt = automation.listener.prompt.substring(0, 1000); // Instagram DM limit is 1000 chars
+          console.log("📤 Sending DM:", truncatedPrompt);
+          const dmResponse = await sendDM(entry.id, commenterId, truncatedPrompt, token);
           console.log("✅ DM sent successfully:", dmResponse);
           await trackResponses(automation.id, 'DM');
         } catch (error: unknown) {
@@ -224,7 +225,6 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error sending DM:", error);
-          return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
         }
       }
 
