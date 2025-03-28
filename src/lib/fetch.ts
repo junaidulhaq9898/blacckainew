@@ -31,27 +31,32 @@ export const sendDM = async (
   return response.data;
 };
 
-export const sendPrivateMessage = async (
-  userId: string,
-  receiverId: string,
-  prompt: string,
+export const sendCommentReply = async (
+  commentId: string,
+  message: string,
   token: string
 ) => {
-  console.log('Sending private message with userId:', userId);
-  const response = await axios.post(
-    `${process.env.INSTAGRAM_BASE_URL}/${userId}/messages`,
-    {
-      recipient: { comment_id: receiverId },
-      message: { text: prompt },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+  console.log('Sending reply to comment:', commentId);
+  try {
+    const response = await axios.post(
+      `${process.env.INSTAGRAM_BASE_URL}/v1/comments/${commentId}/replies`,
+      {
+        message: message,
       },
-    }
-  );
-  return response.data;
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    console.log('Comment reply sent successfully:', response.data);
+    return response.data;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error sending comment reply:', errorMessage);
+    throw new Error(errorMessage);
+  }
 };
 
 export const generateTokens = async (code: string) => {
@@ -84,28 +89,4 @@ export const generateTokens = async (code: string) => {
     access_token: long_token.data.access_token,
     user_id: userId,
   };
-};
-
-// NEW: Function to send a comment reply
-export const sendCommentReply = async (
-  commentId: string,
-  replyText: string,
-  token: string
-) => {
-  try {
-    const response = await axios.post(
-      `${process.env.INSTAGRAM_BASE_URL}/${commentId}/replies`,
-      { message: replyText },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error sending comment reply:', error);
-    throw error;
-  }
 };

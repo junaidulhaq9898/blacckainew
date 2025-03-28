@@ -1,6 +1,5 @@
 // src/actions/webhook/queries.ts
 import { client } from '@/lib/prisma';
-import { sendCommentReply } from '@/lib/fetch';
 
 export const matchKeyword = async (keyword: string) => {
   return await client.keyword.findFirst({
@@ -118,10 +117,12 @@ export const getChatHistory = async (userId: string, accountId: string) => {
   const chatSession: {
     role: 'assistant' | 'user';
     content: string;
-  }[] = history.map((chat) => ({
-    role: chat.senderId === userId ? 'user' : 'assistant',
-    content: chat.message!,
-  }));
+  }[] = history.map((chat) => {
+    return {
+      role: chat.senderId === userId ? 'user' : 'assistant',
+      content: chat.message!,
+    };
+  });
 
   return {
     history: chatSession,
@@ -129,11 +130,7 @@ export const getChatHistory = async (userId: string, accountId: string) => {
   };
 };
 
-export const hasRecentMessages = async (
-  userId: string,
-  accountId: string,
-  minutes: number = 5
-) => {
+export const hasRecentMessages = async (userId: string, accountId: string, minutes: number = 5) => {
   const recentTime = new Date(Date.now() - minutes * 60 * 1000);
   const recentMessages = await client.dms.findMany({
     where: {
@@ -144,45 +141,4 @@ export const hasRecentMessages = async (
     },
   });
   return recentMessages.length > 0;
-};
-
-/**
- * New: Handle comment reply.
- * This function fetches the automation's listener data and, if a comment reply is configured,
- * sends a reply to the given comment ID using the provided token.
- *
- * @param commentId - The Instagram comment ID to reply to.
- * @param automationId - The automation ID associated with this comment.
- * @param token - The Instagram API access token.
- */
-export const handleCommentReply = async (
-  commentId: string,
-  automationId: string,
-  token: string
-) => {
-  try {
-    // Retrieve the automation including its listener data
-    const automation = await client.automation.findUnique({
-      where: { id: automationId },
-      include: { listener: true },
-    });
-    if (!automation) {
-      console.error('Automation not found for id:', automationId);
-      return null;
-    }
-    // If a comment reply is configured, send it
-    if (automation.listener && automation.listener.commentReply) {
-      const replyText = automation.listener.commentReply;
-      console.log('Sending comment reply:', replyText);
-      const result = await sendCommentReply(commentId, replyText, token);
-      console.log('Comment reply sent:', result);
-      return result;
-    } else {
-      console.log('No comment reply configured for automation:', automationId);
-      return null;
-    }
-  } catch (error) {
-    console.error('Error handling comment reply:', error);
-    throw error;
-  }
 };
