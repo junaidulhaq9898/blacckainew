@@ -148,12 +148,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Send DM if configured, truncating to 1000 characters
-      if (automation.listener?.prompt) {
+      // Send a simple DM if configured, not the chatbot prompt
+      if (automation.listener?.commentReply) { // Assuming DM should mirror commentReply intent
         try {
-          const truncatedPrompt = automation.listener.prompt.substring(0, 1000); // Instagram DM limit is 1000 chars
-          console.log("📤 Sending DM:", truncatedPrompt);
-          const dmResponse = await sendDM(entry.id, commenterId, truncatedPrompt, token);
+          const dmMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
+          console.log("📤 Sending DM:", dmMessage);
+          const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
           console.log("✅ DM sent successfully:", dmResponse);
           await trackResponses(automation.id, 'DM');
         } catch (error: unknown) {
