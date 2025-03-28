@@ -180,7 +180,14 @@ export async function POST(req: NextRequest) {
       console.log("🔄 Ongoing conversation:", isOngoing);
 
       let automation;
-      if (!isOngoing) {
+      if (isOngoing) {
+        // Ongoing conversation: fetch automation from history
+        const { automationId } = await getChatHistory(userId, accountId);
+        if (automationId) {
+          automation = await getKeywordAutomation(automationId, true);
+          console.log("🤖 Ongoing automation fetched:", automation?.id);
+        }
+      } else {
         // New conversation: check for keyword match
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
@@ -190,15 +197,14 @@ export async function POST(req: NextRequest) {
           automation = await getKeywordAutomation(matcher.automationId, true);
           console.log("🤖 Automation details:", automation?.id);
         }
-      } else {
-        // Ongoing conversation: fetch the automation from history
-        const { automationId } = await getChatHistory(userId, accountId);
-        if (automationId) {
-          automation = await getKeywordAutomation(automationId, true);
-        }
       }
 
-      if (!automation?.User?.integrations?.[0]?.token) {
+      if (!automation) {
+        console.log("❌ No automation found for this message");
+        return NextResponse.json({ message: 'No automation found' }, { status: 200 });
+      }
+
+      if (!automation.User?.integrations?.[0]?.token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json(
           { message: 'No valid integration token' },
@@ -206,43 +212,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Handle MESSAGE listener (non-PRO or non-SMARTAI)
-      if (automation.listener?.listener === 'MESSAGE' || automation.User?.subscription?.plan !== 'PRO') {
-        try {
-          const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
-          console.log("📤 Attempting to send DM:", {
-            entryId: accountId,
-            senderId: userId,
-            message: messageResponse,
-          });
-
-          const direct_message = await sendDM(
-            accountId,
-            userId,
-            messageResponse,
-            automation.User.integrations[0].token
-          );
-
-          console.log("📬 DM Response:", direct_message);
-
-          if (direct_message.status === 200) {
-            await trackResponses(automation.id, 'DM');
-            console.log("✅ Message sent successfully");
-            return NextResponse.json({ message: 'Message sent' }, { status: 200 });
-          }
-        } catch (error) {
-          console.error("❌ Error sending DM:", error);
-          return NextResponse.json(
-            { message: 'Error sending message' },
-            { status: 500 }
-          );
-        }
-      }
-
-      // Handle SMARTAI listener for PRO plan users (includes ongoing chat)
+      // Handle PRO users with AI-powered responses
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Processing SMARTAI response for PRO user");
+          console.log("🤖 Processing AI-powered response for PRO user");
 
           // Fetch conversation history (limit to last 5 messages for performance)
           const { history } = await getChatHistory(userId, accountId);
@@ -316,9 +289,40 @@ export async function POST(req: NextRequest) {
             );
           }
         } catch (error) {
-          console.error("❌ Error in SMARTAI block:", error);
+          console.error("❌ Error in AI-powered block:", error);
           return NextResponse.json(
             { message: 'Error processing AI response' },
+            { status: 500 }
+          );
+        }
+      } else {
+        // Non-PRO users: send static message
+        try {
+          const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
+          console.log("📤 Attempting to send DM:", {
+            entryId: accountId,
+            senderId: userId,
+            message: messageResponse,
+          });
+
+          const direct_message = await sendDM(
+            accountId,
+            userId,
+            messageResponse,
+            automation.User.integrations[0].token
+          );
+
+          console.log("📬 DM Response:", direct_message);
+
+          if (direct_message.status === 200) {
+            await trackResponses(automation.id, 'DM');
+            console.log("✅ Message sent successfully");
+            return NextResponse.json({ message: 'Message sent' }, { status: 200 });
+          }
+        } catch (error) {
+          console.error("❌ Error sending DM:", error);
+          return NextResponse.json(
+            { message: 'Error sending message' },
             { status: 500 }
           );
         }
