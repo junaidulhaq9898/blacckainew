@@ -80,6 +80,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
+      console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
+
       // Check if comment contains any keywords
       const keywordMatch = automation.keywords.some((keyword) =>
         commentText.includes(keyword.word.toLowerCase())
@@ -108,10 +110,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Send DM after comment based on subscription plan
+      // Send DM after comment
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Processing AI-powered DM for PRO user");
+          console.log("🤖 Generating AI-powered DM for PRO user");
           const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
@@ -142,10 +144,9 @@ export async function POST(req: NextRequest) {
           console.error("❌ Error sending AI-powered DM:", error);
         }
       } else {
-        // Free plan: send template message
         try {
           const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
-          console.log("📤 Sending template DM:", templateMessage);
+          console.log("📤 Sending template DM for non-PRO user:", templateMessage);
           const dmResponse = await sendDM(entry.id, commenterId, templateMessage, token);
           console.log("✅ DM sent successfully:", dmResponse);
           await trackResponses(automation.id, 'DM');
@@ -175,18 +176,15 @@ export async function POST(req: NextRequest) {
       const userId = messaging.sender.id;
       const accountId = entry.id;
 
-      // Check if there's an ongoing conversation
-      const isOngoing = await hasRecentMessages(userId, accountId);
-      console.log("🔄 Ongoing conversation:", isOngoing);
-
+      // Check for ongoing conversation first
       let automation;
-      if (isOngoing) {
-        // Ongoing conversation: fetch automation from history
-        const { automationId } = await getChatHistory(userId, accountId);
-        if (automationId) {
-          automation = await getKeywordAutomation(automationId, true);
-          console.log("🤖 Ongoing automation fetched:", automation?.id);
-        }
+      const { history, automationId } = await getChatHistory(userId, accountId);
+      const isOngoing = history.length > 0;
+      console.log("🔄 Ongoing conversation check:", isOngoing, "History length:", history.length);
+
+      if (isOngoing && automationId) {
+        automation = await getKeywordAutomation(automationId, true);
+        console.log("🤖 Ongoing automation fetched:", automation?.id);
       } else {
         // New conversation: check for keyword match
         const matcher = await matchKeyword(messageText);
@@ -195,7 +193,7 @@ export async function POST(req: NextRequest) {
         if (matcher?.automationId) {
           console.log("✅ Found matching automation ID:", matcher.automationId);
           automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("🤖 Automation details:", automation?.id);
+          console.log("🤖 New automation details:", automation?.id);
         }
       }
 
@@ -203,6 +201,8 @@ export async function POST(req: NextRequest) {
         console.log("❌ No automation found for this message");
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
+
+      console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
 
       if (!automation.User?.integrations?.[0]?.token) {
         console.log("❌ No valid integration token found");
@@ -215,16 +215,10 @@ export async function POST(req: NextRequest) {
       // Handle PRO users with AI-powered responses
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Processing AI-powered response for PRO user");
-
-          // Fetch conversation history (limit to last 5 messages for performance)
-          const { history } = await getChatHistory(userId, accountId);
-          const limitedHistory = history.slice(-5); // Limit to last 5 messages
-
-          // Add the new user message to the history
+          console.log("🤖 Generating AI-powered response for PRO user");
+          const limitedHistory = history.slice(-5); // Use existing history
           limitedHistory.push({ role: 'user', content: messageText });
 
-          // Generate AI response with full history
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [
@@ -241,21 +235,9 @@ export async function POST(req: NextRequest) {
           if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
 
-            // Log user's message
-            await createChatHistory(
-              automation.id,
-              userId,       // sender: user
-              accountId,    // receiver: account
-              messageText
-            );
-
-            // Log AI's response
-            await createChatHistory(
-              automation.id,
-              accountId,    // sender: account
-              userId,       // receiver: user
-              aiResponse
-            );
+            // Log user's message and AI response
+            await createChatHistory(automation.id, userId, accountId, messageText);
+            await createChatHistory(automation.id, accountId, userId, aiResponse);
 
             console.log("📤 Sending AI response as DM:", aiResponse);
             const direct_message = await sendDM(
@@ -296,35 +278,40 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        // Non-PRO users: send static message
-        try {
-          const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
-          console.log("📤 Attempting to send DM:", {
-            entryId: accountId,
-            senderId: userId,
-            message: messageResponse,
-          });
+        // Non-PRO users: send static message only on keyword match
+        if (!isOngoing) {
+          try {
+            const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
+            console.log("📤 Sending static DM for non-PRO user:", {
+              entryId: accountId,
+              senderId: userId,
+              message: messageResponse,
+            });
 
-          const direct_message = await sendDM(
-            accountId,
-            userId,
-            messageResponse,
-            automation.User.integrations[0].token
-          );
+            const direct_message = await sendDM(
+              accountId,
+              userId,
+              messageResponse,
+              automation.User.integrations[0].token
+            );
 
-          console.log("📬 DM Response:", direct_message);
+            console.log("📬 DM Response:", direct_message);
 
-          if (direct_message.status === 200) {
-            await trackResponses(automation.id, 'DM');
-            console.log("✅ Message sent successfully");
-            return NextResponse.json({ message: 'Message sent' }, { status: 200 });
+            if (direct_message.status === 200) {
+              await trackResponses(automation.id, 'DM');
+              console.log("✅ Message sent successfully");
+              return NextResponse.json({ message: 'Message sent' }, { status: 200 });
+            }
+          } catch (error) {
+            console.error("❌ Error sending DM:", error);
+            return NextResponse.json(
+              { message: 'Error sending message' },
+              { status: 500 }
+            );
           }
-        } catch (error) {
-          console.error("❌ Error sending DM:", error);
-          return NextResponse.json(
-            { message: 'Error sending message' },
-            { status: 500 }
-          );
+        } else {
+          console.log("❌ Non-PRO user follow-up ignored (no ongoing chat support)");
+          return NextResponse.json({ message: 'No response for follow-up' }, { status: 200 });
         }
       }
     }
