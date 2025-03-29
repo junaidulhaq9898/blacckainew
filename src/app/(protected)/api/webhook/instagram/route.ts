@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
+          listener: true, // Include listener for commentReply
           User: {
             select: {
               subscription: { select: { plan: true } },
@@ -75,10 +76,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Comment reply logic removed since listener isn't available
+      // Dynamic comment reply from listener
+      if (automation.listener?.commentReply) {
+        try {
+          console.log("📤 Sending comment reply:", automation.listener.commentReply);
+          const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
+          console.log("✅ Comment reply sent successfully:", replyResponse);
+          await trackResponses(automation.id, 'COMMENT');
+        } catch (error: unknown) {
+          console.error("❌ Error sending comment reply:", error);
+        }
+      } else {
+        console.log("⚠️ No comment reply defined in listener; skipping comment reply");
+      }
+
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Generating AI-powered DM for PRO user (no keyword required)");
+          console.log("🤖 Generating AI-powered DM for PRO user");
           const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
@@ -88,7 +102,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: 'Respond helpfully to the user: Keep responses under 2 sentences', // Default prompt
+                content: 'You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry in under 2 sentences.',
               },
               ...limitedHistory,
             ],
@@ -110,9 +124,8 @@ export async function POST(req: NextRequest) {
           console.error("❌ Error sending AI-powered DM:", error);
         }
       } else {
-        // Non-PRO: No keyword check since keywords isn't included
         try {
-          const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
+          const templateMessage = `Thanks for your comment: "${commentText}"! How can Delight Brush Industries assist you with paint brushes today?`;
           console.log("📤 Sending template DM for non-PRO user:", templateMessage);
           const dmResponse = await sendDM(entry.id, commenterId, templateMessage, token);
           console.log("✅ DM sent successfully:", dmResponse);
@@ -172,6 +185,7 @@ export async function POST(req: NextRequest) {
                   integrations: { select: { token: true } },
                 },
               },
+              listener: true, // Include listener if needed elsewhere
             },
             orderBy: { createdAt: 'desc' },
           });
@@ -211,7 +225,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: 'Respond helpfully to the user: Keep responses under 2 sentences', // Default prompt
+                content: 'You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry in under 2 sentences.',
               },
               ...limitedHistory,
             ],
