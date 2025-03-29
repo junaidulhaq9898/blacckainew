@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
-          listener: true, // Include listener for commentReply
+          listener: true,
           User: {
             select: {
               subscription: { select: { plan: true } },
@@ -76,7 +76,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Dynamic comment reply from listener
       if (automation.listener?.commentReply) {
         try {
           console.log("📤 Sending comment reply:", automation.listener.commentReply);
@@ -102,7 +101,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: 'You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry in under 2 sentences.',
+                content: `You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry about paint brushes in under 2 sentences. Example: If asked about colors, say "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?"`,
               },
               ...limitedHistory,
             ],
@@ -119,9 +118,23 @@ export async function POST(req: NextRequest) {
             await trackResponses(automation.id, 'DM');
           } else {
             console.error("❌ No content in AI response:", smart_ai_message);
+            const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+            console.log("📤 Sending fallback DM due to rate limit:", fallbackResponse);
+            const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
+            console.log("✅ Fallback DM sent successfully:", dmResponse);
+            await createChatHistory(automation.id, commenterId, entry.id, commentText);
+            await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
+            await trackResponses(automation.id, 'DM');
           }
-        } catch (error: unknown) {
+        } catch (error) {
           console.error("❌ Error sending AI-powered DM:", error);
+          const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+          console.log("📤 Sending fallback DM due to error:", fallbackResponse);
+          const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
+          console.log("✅ Fallback DM sent successfully:", dmResponse);
+          await createChatHistory(automation.id, commenterId, entry.id, commentText);
+          await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
+          await trackResponses(automation.id, 'DM');
         }
       } else {
         try {
@@ -185,7 +198,7 @@ export async function POST(req: NextRequest) {
                   integrations: { select: { token: true } },
                 },
               },
-              listener: true, // Include listener if needed elsewhere
+              listener: true,
             },
             orderBy: { createdAt: 'desc' },
           });
@@ -225,13 +238,11 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: 'You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry in under 2 sentences.',
+                content: `You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry about paint brushes in under 2 sentences. Example: If asked about colors, say "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?"`,
               },
               ...limitedHistory,
             ],
           });
-
-          console.log("AI Response Raw:", JSON.stringify(smart_ai_message, null, 2));
 
           if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
@@ -260,11 +271,35 @@ export async function POST(req: NextRequest) {
             }
           } else {
             console.error("❌ No content in AI response:", smart_ai_message);
-            return NextResponse.json({ message: 'No AI response content' }, { status: 500 });
+            const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+            console.log("📤 Sending fallback DM due to rate limit:", fallbackResponse);
+            const direct_message = await sendDM(
+              accountId,
+              userId,
+              fallbackResponse,
+              automation.User.integrations[0].token
+            );
+            console.log("✅ Fallback DM sent successfully:", direct_message);
+            await createChatHistory(automation.id, userId, accountId, messageText);
+            await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+            await trackResponses(automation.id, 'DM');
+            return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
           }
         } catch (error) {
           console.error("❌ Error in AI-powered block:", error);
-          return NextResponse.json({ message: 'Error processing AI response' }, { status: 500 });
+          const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+          console.log("📤 Sending fallback DM due to error:", fallbackResponse);
+          const direct_message = await sendDM(
+            accountId,
+            userId,
+            fallbackResponse,
+            automation.User.integrations[0].token
+          );
+          console.log("✅ Fallback DM sent successfully:", direct_message);
+          await createChatHistory(automation.id, userId, accountId, messageText);
+          await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+          await trackResponses(automation.id, 'DM');
+          return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
       } else {
         if (!isOngoing) {
