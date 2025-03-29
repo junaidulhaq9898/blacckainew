@@ -176,21 +176,20 @@ export async function POST(req: NextRequest) {
 
       let automation;
       if (isOngoing && automationId) {
+        // Use existing automation
         automation = await getKeywordAutomation(automationId, true);
         console.log("🤖 Continuing with ongoing automation:", automation?.id);
-      } else if (!isOngoing) {
+      } else {
+        // Check for keyword match (new or broken history)
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("🤖 Starting new automation:", automation?.id);
+          console.log("🤖 Starting or restarting automation:", automation?.id);
         } else {
-          console.log("❌ No keyword match for new conversation");
+          console.log("❌ No keyword match and no valid history");
           return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
-      } else {
-        console.log("❌ Ongoing conversation but no automation ID found in history");
-        return NextResponse.json({ message: 'No automation ID in history' }, { status: 200 });
       }
 
       if (!automation) {
