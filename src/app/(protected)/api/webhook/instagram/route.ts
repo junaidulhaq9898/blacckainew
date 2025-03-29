@@ -44,7 +44,6 @@ export async function POST(req: NextRequest) {
 
       console.log("📝 Processing comment:", commentText);
 
-      // Find automation linked to the post
       const automation = await client.automation.findFirst({
         where: {
           posts: {
@@ -82,7 +81,6 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
 
-      // Check if comment contains any keywords
       const keywordMatch = automation.keywords.some((keyword) =>
         commentText.includes(keyword.word.toLowerCase())
       );
@@ -91,14 +89,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No keyword match' }, { status: 200 });
       }
 
-      // Get Instagram token
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Send comment reply if configured
       if (automation.listener?.commentReply) {
         try {
           console.log("📤 Sending comment reply:", automation.listener.commentReply);
@@ -110,7 +106,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Send DM after comment
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
           console.log("🤖 Generating AI-powered DM for PRO user");
@@ -162,13 +157,11 @@ export async function POST(req: NextRequest) {
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
 
-    // Skip if it's a read receipt or echo message
     if (messaging?.read || messaging?.message?.is_echo) {
       console.log("Skipping read receipt or echo message");
       return NextResponse.json({ message: 'Receipt processed' }, { status: 200 });
     }
 
-    // Process actual message
     if (messaging?.message?.text) {
       const messageText = messaging.message.text;
       console.log("📝 Processing message:", messageText);
@@ -176,45 +169,42 @@ export async function POST(req: NextRequest) {
       const userId = messaging.sender.id;
       const accountId = entry.id;
 
-      // Fetch chat history and determine if ongoing
+      // Fetch chat history
       const { history, automationId } = await getChatHistory(userId, accountId);
       const isOngoing = history.length > 0;
       console.log("🔄 Ongoing conversation check:", isOngoing, "History length:", history.length, "Automation ID from history:", automationId);
 
       let automation;
       if (isOngoing && automationId) {
-        // Use existing automation for ongoing chat
         automation = await getKeywordAutomation(automationId, true);
-        console.log("🤖 Using ongoing automation:", automation?.id);
-      } else {
-        // New conversation: require keyword match
+        console.log("🤖 Continuing with ongoing automation:", automation?.id);
+      } else if (!isOngoing) {
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("🤖 New automation started:", automation?.id);
+          console.log("🤖 Starting new automation:", automation?.id);
         } else {
           console.log("❌ No keyword match for new conversation");
           return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
+      } else {
+        console.log("❌ Ongoing conversation but no automation ID found in history");
+        return NextResponse.json({ message: 'No automation ID in history' }, { status: 200 });
       }
 
       if (!automation) {
         console.log("❌ Automation fetch failed");
-        return NextResponse.json({ message: 'No automation found' }, { status: 200 });
+        return NextResponse.json({ message: 'Automation fetch failed' }, { status: 200 });
       }
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
 
       if (!automation.User?.integrations?.[0]?.token) {
         console.log("❌ No valid integration token found");
-        return NextResponse.json(
-          { message: 'No valid integration token' },
-          { status: 200 }
-        );
+        return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Handle PRO users with AI-powered responses
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
           console.log("🤖 Generating AI-powered response for PRO user");
@@ -237,9 +227,9 @@ export async function POST(req: NextRequest) {
           if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
 
-            // Log user's message and AI response
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, aiResponse);
+            console.log("✅ Chat history updated with automation ID:", automation.id);
 
             console.log("📤 Sending AI response as DM:", aiResponse);
             const direct_message = await sendDM(
@@ -254,33 +244,20 @@ export async function POST(req: NextRequest) {
             if (direct_message.status === 200) {
               await trackResponses(automation.id, 'DM');
               console.log("✅ AI response sent successfully");
-              return NextResponse.json(
-                { message: 'AI response sent' },
-                { status: 200 }
-              );
+              return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
             } else {
               console.error("❌ DM failed with status:", direct_message.status);
-              return NextResponse.json(
-                { message: 'Failed to send AI response' },
-                { status: 500 }
-              );
+              return NextResponse.json({ message: 'Failed to send AI response' }, { status: 500 });
             }
           } else {
             console.error("❌ No content in AI response:", smart_ai_message);
-            return NextResponse.json(
-              { message: 'No AI response content' },
-              { status: 500 }
-            );
+            return NextResponse.json({ message: 'No AI response content' }, { status: 500 });
           }
         } catch (error) {
           console.error("❌ Error in AI-powered block:", error);
-          return NextResponse.json(
-            { message: 'Error processing AI response' },
-            { status: 500 }
-          );
+          return NextResponse.json({ message: 'Error processing AI response' }, { status: 500 });
         }
       } else {
-        // Non-PRO users: send static message only for new conversations
         if (!isOngoing) {
           try {
             const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
@@ -306,10 +283,7 @@ export async function POST(req: NextRequest) {
             }
           } catch (error) {
             console.error("❌ Error sending DM:", error);
-            return NextResponse.json(
-              { message: 'Error sending message' },
-              { status: 500 }
-            );
+            return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
           }
         } else {
           console.log("❌ Non-PRO user follow-up ignored");
@@ -322,9 +296,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'No automation set' }, { status: 200 });
   } catch (error) {
     console.error("❌ Webhook Error:", error);
-    return NextResponse.json(
-      { message: 'Error processing webhook' },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: 'Error processing webhook' }, { status: 500 });
   }
 }
