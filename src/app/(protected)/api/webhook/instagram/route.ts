@@ -19,17 +19,21 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Helper function to generate a smart fallback based on user input
+// Enhanced smart fallback with specific, appropriate responses
 function generateSmartFallback(messageText: string): string {
   const lowerText = messageText.toLowerCase();
   if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-    return "We do offer shipping for our paint brushes! Could you let me know your location for more details?";
+    return "Yes, Delight Brush Industries ships to the USA with standard rates starting at $5. What paint brush are you interested in ordering?";
   } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-    return "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?";
+    return "We offer paint brushes in colors like red, blue, black, and more. Which color would you like for your next project?";
   } else if (lowerText.includes('size') || lowerText.includes('type')) {
-    return "Our paint brushes come in sizes like 1-5 inches and types like flat or angled. What size or type do you need?";
+    return "Our paint brushes come in sizes from 1 to 5 inches and types like flat, angled, and round. What specific size or type are you looking for?";
+  } else if (lowerText.includes('price') || lowerText.includes('cost')) {
+    return "Our paint brushes start at $3 each, depending on size and type. What kind are you interested in?";
+  } else if (lowerText.includes('hello') || lowerText.includes('hi')) {
+    return "Hi there! How can Delight Brush Industries help you with your paint brush needs today?";
   } else {
-    return "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+    return "I’m here to assist with Delight Brush Industries’ paint brushes. Could you tell me more about what you’re looking for?";
   }
 }
 
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry about paint brushes in under 2 sentences. Example: If asked about colors, say "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?"`,
+                content: `You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Answer the user’s question about paint brushes concisely in 1-2 sentences, staying strictly within the scope of paint brush products, shipping, or pricing. Examples: For "shipping to USA," say "Yes, we ship to the USA with rates starting at $5." For "red color," say "We have red paint brushes in various sizes."`,
               },
               ...limitedHistory,
             ],
@@ -252,7 +256,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `You are a helpful assistant for Delight Brush Industries, specializing in paint brushes. Respond to the user’s inquiry about paint brushes in under 2 sentences. Example: If asked about colors, say "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?"`,
+                content: `You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Answer the user’s question about paint brushes concisely in 1-2 sentences, staying strictly within the scope of paint brush products, shipping, or pricing. Examples: For "shipping to USA," say "Yes, we ship to the USA with rates starting at $5." For "red color," say "We have red paint brushes in various sizes."`,
               },
               ...limitedHistory,
             ],
