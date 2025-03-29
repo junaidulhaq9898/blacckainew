@@ -176,29 +176,31 @@ export async function POST(req: NextRequest) {
       const userId = messaging.sender.id;
       const accountId = entry.id;
 
-      // Check for ongoing conversation first
-      let automation;
+      // Fetch chat history and determine if ongoing
       const { history, automationId } = await getChatHistory(userId, accountId);
       const isOngoing = history.length > 0;
-      console.log("🔄 Ongoing conversation check:", isOngoing, "History length:", history.length);
+      console.log("🔄 Ongoing conversation check:", isOngoing, "History length:", history.length, "Automation ID from history:", automationId);
 
+      let automation;
       if (isOngoing && automationId) {
+        // Use existing automation for ongoing chat
         automation = await getKeywordAutomation(automationId, true);
-        console.log("🤖 Ongoing automation fetched:", automation?.id);
+        console.log("🤖 Using ongoing automation:", automation?.id);
       } else {
-        // New conversation: check for keyword match
+        // New conversation: require keyword match
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
-
         if (matcher?.automationId) {
-          console.log("✅ Found matching automation ID:", matcher.automationId);
           automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("🤖 New automation details:", automation?.id);
+          console.log("🤖 New automation started:", automation?.id);
+        } else {
+          console.log("❌ No keyword match for new conversation");
+          return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
       }
 
       if (!automation) {
-        console.log("❌ No automation found for this message");
+        console.log("❌ Automation fetch failed");
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
@@ -216,7 +218,7 @@ export async function POST(req: NextRequest) {
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
           console.log("🤖 Generating AI-powered response for PRO user");
-          const limitedHistory = history.slice(-5); // Use existing history
+          const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
           const smart_ai_message = await openai.chat.completions.create({
@@ -278,7 +280,7 @@ export async function POST(req: NextRequest) {
           );
         }
       } else {
-        // Non-PRO users: send static message only on keyword match
+        // Non-PRO users: send static message only for new conversations
         if (!isOngoing) {
           try {
             const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
@@ -310,7 +312,7 @@ export async function POST(req: NextRequest) {
             );
           }
         } else {
-          console.log("❌ Non-PRO user follow-up ignored (no ongoing chat support)");
+          console.log("❌ Non-PRO user follow-up ignored");
           return NextResponse.json({ message: 'No response for follow-up' }, { status: 200 });
         }
       }
