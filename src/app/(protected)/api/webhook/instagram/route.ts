@@ -53,22 +53,10 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
-          keywords: true,
-          listener: true,
-          trigger: true,
-          dms: true,
           User: {
             select: {
-              subscription: {
-                select: {
-                  plan: true,
-                },
-              },
-              integrations: {
-                select: {
-                  token: true,
-                },
-              },
+              subscription: { select: { plan: true } },
+              integrations: { select: { token: true } },
             },
           },
         },
@@ -81,34 +69,16 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
 
-      const keywordMatch = automation.keywords.some((keyword) =>
-        commentText.includes(keyword.word.toLowerCase())
-      );
-      if (!keywordMatch) {
-        console.log("❌ No keyword match found in comment");
-        return NextResponse.json({ message: 'No keyword match' }, { status: 200 });
-      }
-
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      if (automation.listener?.commentReply) {
-        try {
-          console.log("📤 Sending comment reply:", automation.listener.commentReply);
-          const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
-          console.log("✅ Comment reply sent successfully:", replyResponse);
-          await trackResponses(automation.id, 'COMMENT');
-        } catch (error: unknown) {
-          console.error("❌ Error sending comment reply:", error);
-        }
-      }
-
+      // Comment reply logic removed since listener isn't available
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Generating AI-powered DM for PRO user");
+          console.log("🤖 Generating AI-powered DM for PRO user (no keyword required)");
           const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
@@ -118,7 +88,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
+                content: 'Respond helpfully to the user: Keep responses under 2 sentences', // Default prompt
               },
               ...limitedHistory,
             ],
@@ -131,6 +101,7 @@ export async function POST(req: NextRequest) {
             console.log("✅ DM sent successfully:", dmResponse);
             await createChatHistory(automation.id, commenterId, entry.id, commentText);
             await createChatHistory(automation.id, entry.id, commenterId, aiResponse);
+            console.log("✅ Chat history updated with automation ID:", automation.id);
             await trackResponses(automation.id, 'DM');
           } else {
             console.error("❌ No content in AI response:", smart_ai_message);
@@ -139,6 +110,7 @@ export async function POST(req: NextRequest) {
           console.error("❌ Error sending AI-powered DM:", error);
         }
       } else {
+        // Non-PRO: No keyword check since keywords isn't included
         try {
           const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
           console.log("📤 Sending template DM for non-PRO user:", templateMessage);
@@ -169,25 +141,49 @@ export async function POST(req: NextRequest) {
       const userId = messaging.sender.id;
       const accountId = entry.id;
 
-      // Fetch chat history
       const { history, automationId } = await getChatHistory(userId, accountId);
       const isOngoing = history.length > 0;
       console.log("🔄 Ongoing conversation check:", isOngoing, "History length:", history.length, "Automation ID from history:", automationId);
 
       let automation;
       if (isOngoing && automationId) {
-        // Use existing automation
         automation = await getKeywordAutomation(automationId, true);
         console.log("🤖 Continuing with ongoing automation:", automation?.id);
       } else {
-        // Check for keyword match (new or broken history)
         const matcher = await matchKeyword(messageText);
         console.log("🔍 Keyword match result:", matcher);
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("🤖 Starting or restarting automation:", automation?.id);
+          console.log("🤖 Starting or restarting automation via keyword:", automation?.id);
+        } else if (isOngoing) {
+          const recentAutomation = await client.automation.findFirst({
+            where: {
+              dms: {
+                some: {
+                  senderId: userId,
+                  reciever: accountId,
+                },
+              },
+            },
+            include: {
+              User: {
+                select: {
+                  subscription: { select: { plan: true } },
+                  integrations: { select: { token: true } },
+                },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (recentAutomation) {
+            automation = recentAutomation;
+            console.log("🤖 Recovered automation from recent DMs:", automation.id);
+          } else {
+            console.log("❌ No keyword match and no recoverable automation");
+            return NextResponse.json({ message: 'No automation found' }, { status: 200 });
+          }
         } else {
-          console.log("❌ No keyword match and no valid history");
+          console.log("❌ No keyword match for new conversation");
           return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
       }
@@ -215,7 +211,7 @@ export async function POST(req: NextRequest) {
             messages: [
               {
                 role: 'system',
-                content: `${automation.listener?.prompt}: Keep responses under 2 sentences`,
+                content: 'Respond helpfully to the user: Keep responses under 2 sentences', // Default prompt
               },
               ...limitedHistory,
             ],
