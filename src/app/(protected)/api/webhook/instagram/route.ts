@@ -19,6 +19,20 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
+// Helper function to generate a smart fallback based on user input
+function generateSmartFallback(messageText: string): string {
+  const lowerText = messageText.toLowerCase();
+  if (lowerText.includes('shipping') || lowerText.includes('usa')) {
+    return "We do offer shipping for our paint brushes! Could you let me know your location for more details?";
+  } else if (lowerText.includes('color') || lowerText.includes('colour')) {
+    return "We offer paint brushes in various colors like red, blue, and black. What color are you looking for?";
+  } else if (lowerText.includes('size') || lowerText.includes('type')) {
+    return "Our paint brushes come in sizes like 1-5 inches and types like flat or angled. What size or type do you need?";
+  } else {
+    return "Hello! How can Delight Brush Industries assist you with paint brushes today?";
+  }
+}
+
 // Main webhook handler
 export async function POST(req: NextRequest) {
   try {
@@ -117,9 +131,9 @@ export async function POST(req: NextRequest) {
             console.log("✅ Chat history updated with automation ID:", automation.id);
             await trackResponses(automation.id, 'DM');
           } else {
-            console.error("❌ No content in AI response:", smart_ai_message);
-            const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
-            console.log("📤 Sending fallback DM due to rate limit:", fallbackResponse);
+            console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
+            const fallbackResponse = generateSmartFallback(commentText);
+            console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
             console.log("✅ Fallback DM sent successfully:", dmResponse);
             await createChatHistory(automation.id, commenterId, entry.id, commentText);
@@ -127,9 +141,9 @@ export async function POST(req: NextRequest) {
             await trackResponses(automation.id, 'DM');
           }
         } catch (error) {
-          console.error("❌ Error sending AI-powered DM:", error);
-          const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
-          console.log("📤 Sending fallback DM due to error:", fallbackResponse);
+          console.error("❌ Error sending AI-powered DM (likely rate limit):", error);
+          const fallbackResponse = generateSmartFallback(commentText);
+          console.log("📤 Sending smart fallback DM:", fallbackResponse);
           const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
           console.log("✅ Fallback DM sent successfully:", dmResponse);
           await createChatHistory(automation.id, commenterId, entry.id, commentText);
@@ -270,9 +284,9 @@ export async function POST(req: NextRequest) {
               return NextResponse.json({ message: 'Failed to send AI response' }, { status: 500 });
             }
           } else {
-            console.error("❌ No content in AI response:", smart_ai_message);
-            const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
-            console.log("📤 Sending fallback DM due to rate limit:", fallbackResponse);
+            console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
+            const fallbackResponse = generateSmartFallback(messageText);
+            console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const direct_message = await sendDM(
               accountId,
               userId,
@@ -286,9 +300,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
           }
         } catch (error) {
-          console.error("❌ Error in AI-powered block:", error);
-          const fallbackResponse = "Hello! How can Delight Brush Industries assist you with paint brushes today?";
-          console.log("📤 Sending fallback DM due to error:", fallbackResponse);
+          console.error("❌ Error in AI-powered block (likely rate limit):", error);
+          const fallbackResponse = generateSmartFallback(messageText);
+          console.log("📤 Sending smart fallback DM:", fallbackResponse);
           const direct_message = await sendDM(
             accountId,
             userId,
