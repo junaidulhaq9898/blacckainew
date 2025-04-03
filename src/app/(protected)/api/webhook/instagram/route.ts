@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      if (automation.listener?.commentReply) { // Fixed: reply -> commentReply
+      if (automation.listener?.commentReply) {
         try {
           console.log("📤 Sending comment reply:", automation.listener.commentReply);
           const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
           limitedHistory.push({ role: 'user', content: commentText });
 
           // Use listener.prompt as training data for SMARTAI
-          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt // Fixed: type -> listener
+          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
 
@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
           limitedHistory.push({ role: 'user', content: messageText });
 
           // Use listener.prompt as training data for SMARTAI
-          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt // Fixed: type -> listener
+          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
 
@@ -371,9 +371,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Error processing webhook' }, { status: 500 });
   }
 }
-
-export const config = {
-  api: {
-    bodyParser: true,
-  },
-};
