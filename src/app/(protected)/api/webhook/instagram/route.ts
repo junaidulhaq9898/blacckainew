@@ -19,21 +19,21 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Enhanced smart fallback with specific, appropriate responses
+// Dynamic fallback (unchanged for simplicity)
 function generateSmartFallback(messageText: string): string {
   const lowerText = messageText.toLowerCase();
   if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-    return "Yes, Delight Brush Industries ships to the USA with standard rates starting at $5. What paint brush are you interested in ordering?";
+    return "Yes, we ship to the USA with standard rates starting at $5. What product are you interested in ordering?";
   } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-    return "We offer paint brushes in colors like red, blue, black, and more. Which color would you like for your next project?";
+    return "We offer various colors for our products. Which color would you like?";
   } else if (lowerText.includes('size') || lowerText.includes('type')) {
-    return "Our paint brushes come in sizes from 1 to 5 inches and types like flat, angled, and round. What specific size or type are you looking for?";
+    return "We offer multiple sizes and types. What specific size or type are you looking for?";
   } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-    return "Our paint brushes start at $3 each, depending on size and type. What kind are you interested in?";
+    return "Prices vary by product. What are you interested in?";
   } else if (lowerText.includes('hello') || lowerText.includes('hi')) {
-    return "Hi there! How can Delight Brush Industries help you with your paint brush needs today?";
+    return "Hi there! How can I assist you today?";
   } else {
-    return "I’m here to assist with Delight Brush Industries’ paint brushes. Could you tell me more about what you’re looking for?";
+    return "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
   }
 }
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
-          listener: true,
+          listener: true, // Includes listener, prompt, commentReply
           User: {
             select: {
               subscription: { select: { plan: true } },
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      if (automation.listener?.commentReply) {
+      if (automation.listener?.commentReply) { // Fixed: reply -> commentReply
         try {
           console.log("📤 Sending comment reply:", automation.listener.commentReply);
           const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
@@ -114,12 +114,17 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
+          // Use listener.prompt as training data for SMARTAI
+          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt // Fixed: type -> listener
+            ? automation.listener.prompt
+            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [
               {
                 role: 'system',
-                content: `You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Answer the user’s question about paint brushes concisely in 1-2 sentences, staying strictly within the scope of paint brush products, shipping, or pricing. Examples: For "shipping to USA," say "Yes, we ship to the USA with rates starting at $5." For "red color," say "We have red paint brushes in various sizes."`,
+                content: aiPrompt,
               },
               ...limitedHistory,
             ],
@@ -156,7 +161,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         try {
-          const templateMessage = `Thanks for your comment: "${commentText}"! How can Delight Brush Industries assist you with paint brushes today?`;
+          const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
           console.log("📤 Sending template DM for non-PRO user:", templateMessage);
           const dmResponse = await sendDM(entry.id, commenterId, templateMessage, token);
           console.log("✅ DM sent successfully:", dmResponse);
@@ -251,12 +256,17 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
+          // Use listener.prompt as training data for SMARTAI
+          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt // Fixed: type -> listener
+            ? automation.listener.prompt
+            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [
               {
                 role: 'system',
-                content: `You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Answer the user’s question about paint brushes concisely in 1-2 sentences, staying strictly within the scope of paint brush products, shipping, or pricing. Examples: For "shipping to USA," say "Yes, we ship to the USA with rates starting at $5." For "red color," say "We have red paint brushes in various sizes."`,
+                content: aiPrompt,
               },
               ...limitedHistory,
             ],
@@ -322,7 +332,7 @@ export async function POST(req: NextRequest) {
       } else {
         if (!isOngoing) {
           try {
-            const messageResponse = "Hello! How can Delight Brush Industries assist you with our paint brushes today?";
+            const messageResponse = "Hello! How can we assist you with our products today?";
             console.log("📤 Sending static DM for non-PRO user:", {
               entryId: accountId,
               senderId: userId,
@@ -361,3 +371,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Error processing webhook' }, { status: 500 });
   }
 }
+
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};
