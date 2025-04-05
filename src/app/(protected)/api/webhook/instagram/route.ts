@@ -19,61 +19,50 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Enhanced smart fallback with prompt parsing and repetition prevention
+// Universal smart fallback with dynamic prompt parsing
 function generateSmartFallback(
   messageText: string,
   history: { role: string; content: string }[],
   prompt?: string
 ): string {
   const lowerText = messageText.toLowerCase();
-  const lastMessage = history.length > 0 ? history[history.length - 1].content : null;
+  const lastSentMessages = history.filter(h => h.role === 'assistant').map(h => h.content);
+  const lastMessage = lastSentMessages.length > 0 ? lastSentMessages[lastSentMessages.length - 1] : null;
 
-  // Fallback responses to cycle through if rate-limited
+  // Generic fallback options to cycle through when prompt doesn’t apply
   const fallbackOptions = [
-    "I’m here to assist with your needs. Could you tell me more about what you’re looking for?",
-    "Hey there! What can I help you with today?",
-    "I’d love to assist you! What details are you interested in?",
+    "I’m here to assist you. Could you tell me more about what you need?",
+    "Hi there! How can I help you today?",
+    "I’d love to assist! What are you looking for?",
   ];
 
-  // Pick a different response if the last one was used
-  let fallbackIndex = 0;
-  if (lastMessage && fallbackOptions.includes(lastMessage)) {
-    fallbackIndex = (fallbackOptions.indexOf(lastMessage) + 1) % fallbackOptions.length;
-  }
+  // Cycle through fallbacks
+  const getNextFallback = () => {
+    if (!lastMessage || !fallbackOptions.includes(lastMessage)) return fallbackOptions[0];
+    const currentIndex = fallbackOptions.indexOf(lastMessage);
+    return fallbackOptions[(currentIndex + 1) % fallbackOptions.length];
+  };
 
-  // Parse prompt for direct answers if available
-  if (prompt) {
-    const promptLower = prompt.toLowerCase();
-    if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-      if (promptLower.includes('shipping to usa')) {
-        return "Yes, we ship to the USA—rates start at $5. What would you like to order?";
-      } else if (promptLower.includes('no international shipping')) {
-        return "We only ship to the USA, not internationally. What can I help you with?";
+  // If no prompt, return a cycled generic response
+  if (!prompt) return getNextFallback();
+
+  // Split prompt into sentences for parsing
+  const promptLower = prompt.toLowerCase();
+  const promptSentences = prompt.split(/[.!?]+/).filter(s => s.trim());
+
+  // Look for keywords in the message and match with prompt
+  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2); // Basic tokenization
+  for (const keyword of keywords) {
+    for (const sentence of promptSentences) {
+      if (sentence.toLowerCase().includes(keyword)) {
+        // Extract the relevant sentence and append a follow-up question
+        return `${sentence.trim()}. How can I assist you further?`;
       }
-      return "Shipping details depend on your order. What are you interested in?";
-    } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-      if (promptLower.includes('red')) {
-        return "We offer red options in our products. Which one would you like?";
-      } else if (promptLower.includes('yellow')) {
-        return "Yellow is available for some items. What are you looking for?";
-      }
-      return "We have various colors available. Which one do you prefer?";
-    } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-      if (promptLower.includes('$3-$5')) {
-        return "Our prices range from $3 to $5 depending on the item. What are you interested in?";
-      }
-      return "Pricing varies by product. What do you want to know about?";
-    } else if (lowerText.includes('size') || lowerText.includes('type')) {
-      if (promptLower.includes('1-3 inches')) {
-        return "We have sizes from 1-3 inches available. Which one suits you?";
-      }
-      return "Sizes and types vary. What are you looking for?";
-    } else if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('heyyy')) {
-      return "Hi! How can I assist you today based on our offerings?";
     }
   }
 
-  return fallbackOptions[fallbackIndex];
+  // If no keyword match, return a cycled generic response
+  return getNextFallback();
 }
 
 // Main webhook handler
@@ -157,19 +146,24 @@ export async function POST(req: NextRequest) {
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
 
-          const smart_ai_message = await openai.chat.completions.create({
-            model: 'google/gemini-2.0-flash-001',
-            messages: [
-              {
-                role: 'system',
-                content: aiPrompt,
-              },
-              ...limitedHistory,
-            ],
-          });
+          let aiResponse: string | null = null;
+          try {
+            const smart_ai_message = await openai.chat.completions.create({
+              model: 'google/gemma-3-27b-it:free',
+              messages: [
+                {
+                  role: 'system',
+                  content: aiPrompt,
+                },
+                ...limitedHistory,
+              ],
+            });
+            aiResponse = smart_ai_message?.choices?.[0]?.message?.content || null;
+          } catch (aiError) {
+            console.error("❌ AI request failed (likely rate limit):", aiError);
+          }
 
-          if (smart_ai_message?.choices?.[0]?.message?.content) {
-            const aiResponse = smart_ai_message.choices[0].message.content;
+          if (aiResponse) {
             console.log("📤 Sending AI response as DM:", aiResponse);
             const dmResponse = await sendDM(entry.id, commenterId, aiResponse, token);
             console.log("✅ DM sent successfully:", dmResponse);
@@ -178,7 +172,7 @@ export async function POST(req: NextRequest) {
             console.log("✅ Chat history updated with automation ID:", automation.id);
             await trackResponses(automation.id, 'DM');
           } else {
-            console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
+            console.log("⚠️ AI response unavailable, using fallback");
             const fallbackResponse = generateSmartFallback(commentText, limitedHistory, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
@@ -188,7 +182,7 @@ export async function POST(req: NextRequest) {
             await trackResponses(automation.id, 'DM');
           }
         } catch (error) {
-          console.error("❌ Error sending AI-powered DM (likely rate limit):", error);
+          console.error("❌ Error sending AI-powered DM:", error);
           const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           const fallbackResponse = generateSmartFallback(commentText, limitedHistory, automation.listener?.prompt);
@@ -244,13 +238,16 @@ export async function POST(req: NextRequest) {
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
           console.log("🤖 Starting or restarting automation via keyword:", automation?.id);
-        } else if (isOngoing) {
+        } else {
+          // Enhanced recovery for when automationId is null
           const recentAutomation = await client.automation.findFirst({
             where: {
               dms: {
                 some: {
-                  senderId: userId,
-                  reciever: accountId,
+                  OR: [
+                    { senderId: userId, reciever: accountId },
+                    { senderId: accountId, reciever: userId },
+                  ],
                 },
               },
             },
@@ -272,9 +269,6 @@ export async function POST(req: NextRequest) {
             console.log("❌ No keyword match and no recoverable automation");
             return NextResponse.json({ message: 'No automation found' }, { status: 200 });
           }
-        } else {
-          console.log("❌ No keyword match for new conversation");
-          return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
       }
 
