@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
 
           const smart_ai_message = await openai.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
+            model: 'google/gemini-2.0-flash-001',
             messages: [
               {
                 role: 'system',
