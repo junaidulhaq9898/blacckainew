@@ -19,39 +19,42 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Universal smart fallback relying on user prompt
+// Simplified smart fallback with diagnostics
 function generateSmartFallback(
   messageText: string,
   history: { role: string; content: string }[],
   prompt?: string
 ): string {
-  console.log("🔍 [Fallback] Processing message:", messageText);
-  console.log("🔍 [Fallback] Prompt:", prompt);
+  console.log("🔍 [Fallback] Message received:", messageText);
+  console.log("🔍 [Fallback] Prompt provided:", prompt || 'None');
   console.log("🔍 [Fallback] History length:", history.length);
 
   const lowerText = messageText.toLowerCase();
   const defaultFallback = "I’m not sure I understood—could you please provide more details?";
 
-  if (!prompt) {
-    console.log("⚠️ [Fallback] No prompt provided, using default");
+  if (!prompt || prompt.trim() === '') {
+    console.log("⚠️ [Fallback] Prompt is empty or missing, using default");
     return defaultFallback;
   }
 
   const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
+  console.log("🔍 [Fallback] Prompt split into sentences:", promptSentences);
+
   const keywords = lowerText.split(/\s+/).filter(word => word.length > 2);
-  console.log("🔍 [Fallback] Keywords:", keywords);
-  console.log("🔍 [Fallback] Prompt sentences:", promptSentences);
+  console.log("🔍 [Fallback] Extracted keywords:", keywords);
 
   for (const keyword of keywords) {
     for (const sentence of promptSentences) {
-      if (sentence.toLowerCase().includes(keyword)) {
-        console.log("✅ [Fallback] Matched keyword:", keyword, "in:", sentence);
+      const lowerSentence = sentence.toLowerCase();
+      console.log(`🔍 [Fallback] Checking keyword "${keyword}" in sentence: "${lowerSentence}"`);
+      if (lowerSentence.includes(keyword)) {
+        console.log("✅ [Fallback] Match found - Keyword:", keyword, "Sentence:", sentence);
         return `${sentence}. How can I assist you further?`;
       }
     }
   }
 
-  console.log("⚠️ [Fallback] No match found in prompt");
+  console.log("⚠️ [Fallback] No keyword matched any sentence, using default");
   return defaultFallback;
 }
 
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-05-v2"); // Confirm deployment
+    console.log("🔍 Code version: 2025-04-05-v4"); // Confirm deployment
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'No entry found' }, { status: 200 });
     }
 
-    console.log("Entry ID:", entry.id);
+    console.log("🔍 Instagram Account ID (entry.id):", entry.id);
 
     // Handle comments
     if (entry.changes && entry.changes[0].field === 'comments') {
@@ -80,8 +83,9 @@ export async function POST(req: NextRequest) {
       const commenterId = commentData.from.id;
 
       console.log("📝 Processing comment:", commentText);
+      console.log("🔍 Post ID:", postId);
 
-      const automation = await client.automation.findFirst({
+      let automation = await client.automation.findFirst({
         where: {
           posts: {
             some: { postid: postId },
@@ -98,8 +102,31 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Fallback: Find by Instagram account ID if no post match
       if (!automation) {
-        console.log("❌ No automation found for post ID:", postId);
+        console.log("⚠️ No automation found for post ID, trying account ID");
+        automation = await client.automation.findFirst({
+          where: {
+            User: {
+              integrations: {
+                some: { instagramId: entry.id }, // Assumes integration has instagramId
+              },
+            },
+          },
+          include: {
+            listener: true,
+            User: {
+              select: {
+                subscription: { select: { plan: true } },
+                integrations: { select: { token: true } },
+              },
+            },
+          },
+        });
+      }
+
+      if (!automation) {
+        console.log("❌ No automation found for post or account ID:", entry.id);
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
@@ -186,20 +213,25 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'DM');
         }
       } else {
-        // Free plan: Use prompt or default DM
-        const templateMessage = automation.listener?.prompt
-          ? generateSmartFallback(commentText, [], automation.listener.prompt)
-          : `Thanks for your comment: "${commentText}"! How can I assist you?`;
-        console.log("📤 Sending free plan DM:", templateMessage);
-        try {
-          const dmResponse = await sendDM(entry.id, commenterId, templateMessage, token);
-          console.log("✅ Free plan DM sent:", dmResponse);
-          await createChatHistory(automation.id, commenterId, entry.id, commentText);
-          await createChatHistory(automation.id, entry.id, commenterId, templateMessage);
-          console.log("✅ Chat history updated with ID:", automation.id);
-          await trackResponses(automation.id, 'DM');
-        } catch (error) {
-          console.error("❌ Error sending free plan DM:", error);
+        // Free plan: Prompt-based DM for first message
+        const { history } = await getChatHistory(commenterId, entry.id);
+        if (history.length === 0) {
+          const freeResponse = automation.listener?.prompt
+            ? generateSmartFallback(commentText, history, automation.listener.prompt)
+            : "Hello! How can I assist you today?";
+          console.log("📤 Sending free plan DM:", freeResponse);
+          try {
+            const dmResponse = await sendDM(entry.id, commenterId, freeResponse, token);
+            console.log("✅ Free plan DM sent:", dmResponse);
+            await createChatHistory(automation.id, commenterId, entry.id, commentText);
+            await createChatHistory(automation.id, entry.id, commenterId, freeResponse);
+            console.log("✅ Chat history updated with ID:", automation.id);
+            await trackResponses(automation.id, 'DM');
+          } catch (error) {
+            console.error("❌ Error sending free plan DM:", error);
+          }
+        } else {
+          console.log("⚠️ Free plan: No follow-up response");
         }
       }
 
@@ -239,12 +271,9 @@ export async function POST(req: NextRequest) {
         } else {
           automation = await client.automation.findFirst({
             where: {
-              dms: {
-                some: {
-                  OR: [
-                    { senderId: userId, reciever: accountId },
-                    { senderId: accountId, reciever: userId },
-                  ],
+              User: {
+                integrations: {
+                  some: { instagramId: accountId }, // Match by Instagram account ID
                 },
               },
             },
@@ -254,12 +283,12 @@ export async function POST(req: NextRequest) {
             },
             orderBy: { createdAt: 'desc' },
           });
-          console.log("🤖 Recovered automation:", automation?.id || 'none');
+          console.log("🤖 Recovered automation by account ID:", automation?.id || 'none');
         }
       }
 
       if (!automation) {
-        console.log("❌ No automation found");
+        console.log("❌ No automation found for account ID:", accountId);
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
@@ -332,17 +361,17 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
       } else {
-        // Free plan: Use prompt or default for first message
+        // Free plan: Prompt-based DM for first message
         if (history.length === 0) {
-          const templateMessage = automation.listener?.prompt
-            ? generateSmartFallback(messageText, [], automation.listener.prompt)
+          const freeResponse = automation.listener?.prompt
+            ? generateSmartFallback(messageText, history, automation.listener.prompt)
             : "Hello! How can I assist you today?";
-          console.log("📤 Sending free plan DM:", templateMessage);
+          console.log("📤 Sending free plan DM:", freeResponse);
           try {
-            const direct_message = await sendDM(accountId, userId, templateMessage, token);
+            const direct_message = await sendDM(accountId, userId, freeResponse, token);
             console.log("✅ Free plan DM sent:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
-            await createChatHistory(automation.id, accountId, userId, templateMessage);
+            await createChatHistory(automation.id, accountId, userId, freeResponse);
             console.log("✅ Chat history updated with ID:", automation.id);
             await trackResponses(automation.id, 'DM');
             return NextResponse.json({ message: 'Free plan DM sent' }, { status: 200 });
