@@ -19,33 +19,61 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Enhanced smart fallback with context awareness
-function generateSmartFallback(messageText: string, history: { role: string; content: string }[], prompt?: string): string {
+// Enhanced smart fallback with prompt parsing and repetition prevention
+function generateSmartFallback(
+  messageText: string,
+  history: { role: string; content: string }[],
+  prompt?: string
+): string {
   const lowerText = messageText.toLowerCase();
   const lastMessage = history.length > 0 ? history[history.length - 1].content : null;
 
-  // Avoid repeating the last message
-  const defaultResponse = "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
-  if (lastMessage === defaultResponse) {
-    return "I’d love to help! What specific details can I assist you with today?";
+  // Fallback responses to cycle through if rate-limited
+  const fallbackOptions = [
+    "I’m here to assist with your needs. Could you tell me more about what you’re looking for?",
+    "Hey there! What can I help you with today?",
+    "I’d love to assist you! What details are you interested in?",
+  ];
+
+  // Pick a different response if the last one was used
+  let fallbackIndex = 0;
+  if (lastMessage && fallbackOptions.includes(lastMessage)) {
+    fallbackIndex = (fallbackOptions.indexOf(lastMessage) + 1) % fallbackOptions.length;
   }
 
-  // Use prompt for context if available
+  // Parse prompt for direct answers if available
   if (prompt) {
+    const promptLower = prompt.toLowerCase();
     if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-      return `${prompt.includes('shipping') ? 'We handle shipping—details depend on your order.' : 'Shipping info varies.'} What are you interested in?`;
+      if (promptLower.includes('shipping to usa')) {
+        return "Yes, we ship to the USA—rates start at $5. What would you like to order?";
+      } else if (promptLower.includes('no international shipping')) {
+        return "We only ship to the USA, not internationally. What can I help you with?";
+      }
+      return "Shipping details depend on your order. What are you interested in?";
     } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-      return `${prompt.includes('color') ? 'We have multiple color options.' : 'Colors depend on the product.'} Which one do you prefer?`;
-    } else if (lowerText.includes('size') || lowerText.includes('type')) {
-      return `${prompt.includes('size') ? 'Sizes vary by item.' : 'We offer different types.'} What are you looking for?`;
+      if (promptLower.includes('red')) {
+        return "We offer red options in our products. Which one would you like?";
+      } else if (promptLower.includes('yellow')) {
+        return "Yellow is available for some items. What are you looking for?";
+      }
+      return "We have various colors available. Which one do you prefer?";
     } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-      return `${prompt.includes('price') ? 'Pricing depends on the product.' : 'Prices vary.'} What item interests you?`;
+      if (promptLower.includes('$3-$5')) {
+        return "Our prices range from $3 to $5 depending on the item. What are you interested in?";
+      }
+      return "Pricing varies by product. What do you want to know about?";
+    } else if (lowerText.includes('size') || lowerText.includes('type')) {
+      if (promptLower.includes('1-3 inches')) {
+        return "We have sizes from 1-3 inches available. Which one suits you?";
+      }
+      return "Sizes and types vary. What are you looking for?";
     } else if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('heyyy')) {
-      return "Hey there! How can I assist you today based on our offerings?";
+      return "Hi! How can I assist you today based on our offerings?";
     }
   }
 
-  return defaultResponse;
+  return fallbackOptions[fallbackIndex];
 }
 
 // Main webhook handler
@@ -273,39 +301,41 @@ export async function POST(req: NextRequest) {
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
 
-          const smart_ai_message = await openai.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
-            messages: [
-              {
-                role: 'system',
-                content: aiPrompt,
-              },
-              ...limitedHistory,
-            ],
-          });
+          let aiResponse: string | null = null;
+          try {
+            const smart_ai_message = await openai.chat.completions.create({
+              model: 'google/gemma-3-27b-it:free',
+              messages: [
+                {
+                  role: 'system',
+                  content: aiPrompt,
+                },
+                ...limitedHistory,
+              ],
+            });
+            aiResponse = smart_ai_message?.choices?.[0]?.message?.content || null;
+          } catch (aiError) {
+            console.error("❌ AI request failed (likely rate limit):", aiError);
+          }
 
-          if (smart_ai_message?.choices?.[0]?.message?.content) {
-            const aiResponse = smart_ai_message.choices[0].message.content;
-
-            await createChatHistory(automation.id, userId, accountId, messageText);
-            await createChatHistory(automation.id, accountId, userId, aiResponse);
-            console.log("✅ Chat history updated with automation ID:", automation.id);
-
+          if (aiResponse) {
             console.log("📤 Sending AI response as DM:", aiResponse);
             const direct_message = await sendDM(accountId, userId, aiResponse, token);
-
             console.log("📬 DM Response:", direct_message);
 
             if (direct_message.status === 200) {
+              await createChatHistory(automation.id, userId, accountId, messageText);
+              await createChatHistory(automation.id, accountId, userId, aiResponse);
+              console.log("✅ Chat history updated with automation ID:", automation.id);
               await trackResponses(automation.id, 'DM');
               console.log("✅ AI response sent successfully");
               return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
             } else {
               console.error("❌ DM failed with status:", direct_message.status);
-              return NextResponse.json({ message: 'Failed to send AI response' }, { status: 500 });
+              throw new Error('DM send failed');
             }
           } else {
-            console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
+            console.log("⚠️ AI response unavailable, using fallback");
             const fallbackResponse = generateSmartFallback(messageText, limitedHistory, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const direct_message = await sendDM(accountId, userId, fallbackResponse, token);
@@ -316,7 +346,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
           }
         } catch (error) {
-          console.error("❌ Error in AI-powered block (likely rate limit):", error);
+          console.error("❌ Error in AI-powered block:", error);
           const limitedHistory = history.slice(-5);
           const fallbackResponse = generateSmartFallback(messageText, limitedHistory, automation.listener?.prompt);
           console.log("📤 Sending smart fallback DM:", fallbackResponse);
@@ -338,7 +368,6 @@ export async function POST(req: NextRequest) {
             });
 
             const direct_message = await sendDM(accountId, userId, messageResponse, token);
-
             console.log("📬 DM Response:", direct_message);
 
             if (direct_message.status === 200) {
