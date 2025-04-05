@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Universal smart fallback with dynamic prompt parsing
+// Universal smart fallback with improved prompt parsing
 function generateSmartFallback(
   messageText: string,
   history: { role: string; content: string }[],
@@ -29,7 +29,7 @@ function generateSmartFallback(
   const lastSentMessages = history.filter(h => h.role === 'assistant').map(h => h.content);
   const lastMessage = lastSentMessages.length > 0 ? lastSentMessages[lastSentMessages.length - 1] : null;
 
-  // Generic fallback options to cycle through when prompt doesn’t apply
+  // Generic fallback options to cycle through
   const fallbackOptions = [
     "I’m here to assist you. Could you tell me more about what you need?",
     "Hi there! How can I help you today?",
@@ -43,25 +43,31 @@ function generateSmartFallback(
     return fallbackOptions[(currentIndex + 1) % fallbackOptions.length];
   };
 
-  // If no prompt, return a cycled generic response
-  if (!prompt) return getNextFallback();
+  // If no prompt, cycle generic responses
+  if (!prompt) {
+    console.log("⚠️ No prompt provided, using generic fallback");
+    return getNextFallback();
+  }
 
-  // Split prompt into sentences for parsing
-  const promptLower = prompt.toLowerCase();
-  const promptSentences = prompt.split(/[.!?]+/).filter(s => s.trim());
+  // Split prompt into sentences and clean up
+  const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
+  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2); // e.g., "delivery", "outside", "india"
 
-  // Look for keywords in the message and match with prompt
-  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2); // Basic tokenization
+  console.log("🔍 Keywords extracted from message:", keywords);
+  console.log("🔍 Prompt sentences:", promptSentences);
+
+  // Match keywords to prompt sentences
   for (const keyword of keywords) {
     for (const sentence of promptSentences) {
       if (sentence.toLowerCase().includes(keyword)) {
-        // Extract the relevant sentence and append a follow-up question
-        return `${sentence.trim()}. How can I assist you further?`;
+        console.log("✅ Matched keyword:", keyword, "in sentence:", sentence);
+        return `${sentence}. How can I assist you further?`;
       }
     }
   }
 
-  // If no keyword match, return a cycled generic response
+  // If no match, cycle through generic fallbacks
+  console.log("⚠️ No keyword match found in prompt, using generic fallback");
   return getNextFallback();
 }
 
@@ -239,7 +245,6 @@ export async function POST(req: NextRequest) {
           automation = await getKeywordAutomation(matcher.automationId, true);
           console.log("🤖 Starting or restarting automation via keyword:", automation?.id);
         } else {
-          // Enhanced recovery for when automationId is null
           const recentAutomation = await client.automation.findFirst({
             where: {
               dms: {
@@ -278,6 +283,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Automation prompt:", automation.listener?.prompt);
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
