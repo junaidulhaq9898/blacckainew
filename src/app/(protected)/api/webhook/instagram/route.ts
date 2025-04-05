@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Simplified smart fallback with diagnostics
+// Smart fallback with diagnostics
 function generateSmartFallback(
   messageText: string,
   history: { role: string; content: string }[],
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-05-v4"); // Confirm deployment
+    console.log("🔍 Code version: 2025-04-05-v5");
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -102,14 +102,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Fallback: Find by Instagram account ID if no post match
       if (!automation) {
         console.log("⚠️ No automation found for post ID, trying account ID");
         automation = await client.automation.findFirst({
           where: {
             User: {
               integrations: {
-                some: { instagramId: entry.id }, // Assumes integration has instagramId
+                some: { instagramId: entry.id },
               },
             },
           },
@@ -126,7 +125,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (!automation) {
-        console.log("❌ No automation found for post or account ID:", entry.id);
+        console.log("❌ No automation found for account ID:", entry.id);
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
@@ -139,7 +138,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Comment reply (both plans)
       if (automation.listener?.commentReply) {
         console.log("📤 Sending comment reply:", automation.listener.commentReply);
         try {
@@ -153,11 +151,10 @@ export async function POST(req: NextRequest) {
         console.log("⚠️ No comment reply configured");
       }
 
-      // PRO plan: AI or fallback DM
+      const { history } = await getChatHistory(commenterId, entry.id);
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
           console.log("🤖 Generating AI-powered DM for PRO user");
-          const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
@@ -201,7 +198,6 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error in PRO DM block:", error);
-          const { history } = await getChatHistory(commenterId, entry.id);
           const limitedHistory = history.slice(-5);
           const fallbackResponse = generateSmartFallback(commentText, limitedHistory, automation.listener?.prompt);
           console.log("📤 Sending fallback DM:", fallbackResponse);
@@ -213,8 +209,6 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'DM');
         }
       } else {
-        // Free plan: Prompt-based DM for first message
-        const { history } = await getChatHistory(commenterId, entry.id);
         if (history.length === 0) {
           const freeResponse = automation.listener?.prompt
             ? generateSmartFallback(commentText, history, automation.listener.prompt)
@@ -273,7 +267,7 @@ export async function POST(req: NextRequest) {
             where: {
               User: {
                 integrations: {
-                  some: { instagramId: accountId }, // Match by Instagram account ID
+                  some: { instagramId: accountId },
                 },
               },
             },
@@ -297,13 +291,13 @@ export async function POST(req: NextRequest) {
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
-        console.log("❌ No valid token");
+        console.log("❌ No valid token for automation:", automation.id);
         return NextResponse.json({ message: 'No valid token' }, { status: 200 });
       }
 
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Generating AI response for PRO");
+          console.log("🤖 Starting PRO AI response generation");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
@@ -314,6 +308,7 @@ export async function POST(req: NextRequest) {
 
           let aiResponse: string | null = null;
           try {
+            console.log("🔍 Sending request to AI model");
             const smart_ai_message = await openai.chat.completions.create({
               model: 'google/gemma-3-27b-it:free',
               messages: [
@@ -322,8 +317,9 @@ export async function POST(req: NextRequest) {
               ],
             });
             aiResponse = smart_ai_message?.choices?.[0]?.message?.content || null;
+            console.log("🔍 AI response received:", aiResponse);
           } catch (aiError) {
-            console.error("❌ AI failed:", aiError);
+            console.error("❌ AI request failed:", aiError);
           }
 
           if (aiResponse) {
@@ -361,7 +357,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
       } else {
-        // Free plan: Prompt-based DM for first message
+        // Free plan: Send prompt-based DM only on first message
         if (history.length === 0) {
           const freeResponse = automation.listener?.prompt
             ? generateSmartFallback(messageText, history, automation.listener.prompt)
