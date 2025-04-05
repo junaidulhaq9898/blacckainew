@@ -19,17 +19,22 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Universal smart fallback with improved prompt parsing
+// Universal smart fallback with robust parsing and diagnostics
 function generateSmartFallback(
   messageText: string,
   history: { role: string; content: string }[],
   prompt?: string
 ): string {
+  console.log("🔍 Entering generateSmartFallback with message:", messageText);
+  console.log("🔍 History length:", history.length);
+  console.log("🔍 Prompt:", prompt);
+
   const lowerText = messageText.toLowerCase();
   const lastSentMessages = history.filter(h => h.role === 'assistant').map(h => h.content);
   const lastMessage = lastSentMessages.length > 0 ? lastSentMessages[lastSentMessages.length - 1] : null;
+  console.log("🔍 Last sent message:", lastMessage);
 
-  // Generic fallback options to cycle through
+  // Generic fallback options
   const fallbackOptions = [
     "I’m here to assist you. Could you tell me more about what you need?",
     "Hi there! How can I help you today?",
@@ -38,25 +43,26 @@ function generateSmartFallback(
 
   // Cycle through fallbacks
   const getNextFallback = () => {
+    console.log("🔍 Cycling through fallback options");
     if (!lastMessage || !fallbackOptions.includes(lastMessage)) return fallbackOptions[0];
     const currentIndex = fallbackOptions.indexOf(lastMessage);
-    return fallbackOptions[(currentIndex + 1) % fallbackOptions.length];
+    const nextIndex = (currentIndex + 1) % fallbackOptions.length;
+    console.log("🔍 Selected fallback index:", nextIndex);
+    return fallbackOptions[nextIndex];
   };
 
-  // If no prompt, cycle generic responses
   if (!prompt) {
-    console.log("⚠️ No prompt provided, using generic fallback");
+    console.log("⚠️ No prompt provided, returning generic fallback");
     return getNextFallback();
   }
 
-  // Split prompt into sentences and clean up
+  // Parse prompt into sentences
   const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
-  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2); // e.g., "delivery", "outside", "india"
-
-  console.log("🔍 Keywords extracted from message:", keywords);
+  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2);
+  console.log("🔍 Keywords:", keywords);
   console.log("🔍 Prompt sentences:", promptSentences);
 
-  // Match keywords to prompt sentences
+  // Match keywords to sentences
   for (const keyword of keywords) {
     for (const sentence of promptSentences) {
       if (sentence.toLowerCase().includes(keyword)) {
@@ -66,8 +72,7 @@ function generateSmartFallback(
     }
   }
 
-  // If no match, cycle through generic fallbacks
-  console.log("⚠️ No keyword match found in prompt, using generic fallback");
+  console.log("⚠️ No keyword match, returning generic fallback");
   return getNextFallback();
 }
 
@@ -86,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     console.log("Entry ID:", entry.id);
 
-    // Handle comments
+    // Handle comments (unchanged for brevity)
     if (entry.changes && entry.changes[0].field === 'comments') {
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
@@ -137,8 +142,6 @@ export async function POST(req: NextRequest) {
         } catch (error: unknown) {
           console.error("❌ Error sending comment reply:", error);
         }
-      } else {
-        console.log("⚠️ No comment reply defined in listener; skipping comment reply");
       }
 
       if (automation.User?.subscription?.plan === 'PRO') {
@@ -150,17 +153,15 @@ export async function POST(req: NextRequest) {
 
           const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
-            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences.";
+          console.log("🔍 AI Prompt:", aiPrompt);
 
           let aiResponse: string | null = null;
           try {
             const smart_ai_message = await openai.chat.completions.create({
               model: 'google/gemma-3-27b-it:free',
               messages: [
-                {
-                  role: 'system',
-                  content: aiPrompt,
-                },
+                { role: 'system', content: aiPrompt },
                 ...limitedHistory,
               ],
             });
@@ -185,6 +186,7 @@ export async function POST(req: NextRequest) {
             console.log("✅ Fallback DM sent successfully:", dmResponse);
             await createChatHistory(automation.id, commenterId, entry.id, commentText);
             await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
+            console.log("✅ Chat history updated with automation ID:", automation.id);
             await trackResponses(automation.id, 'DM');
           }
         } catch (error) {
@@ -197,6 +199,7 @@ export async function POST(req: NextRequest) {
           console.log("✅ Fallback DM sent successfully:", dmResponse);
           await createChatHistory(automation.id, commenterId, entry.id, commentText);
           await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
+          console.log("✅ Chat history updated with automation ID:", automation.id);
           await trackResponses(automation.id, 'DM');
         }
       } else {
@@ -282,7 +285,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'Automation fetch failed' }, { status: 200 });
       }
 
-      console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Automation ID:", automation.id, "Plan:", automation.User?.subscription?.plan);
       console.log("🔍 Automation prompt:", automation.listener?.prompt);
 
       const token = automation.User?.integrations?.[0]?.token;
@@ -299,17 +302,15 @@ export async function POST(req: NextRequest) {
 
           const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
-            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences.";
+          console.log("🔍 AI Prompt:", aiPrompt);
 
           let aiResponse: string | null = null;
           try {
             const smart_ai_message = await openai.chat.completions.create({
               model: 'google/gemma-3-27b-it:free',
               messages: [
-                {
-                  role: 'system',
-                  content: aiPrompt,
-                },
+                { role: 'system', content: aiPrompt },
                 ...limitedHistory,
               ],
             });
@@ -342,6 +343,7 @@ export async function POST(req: NextRequest) {
             console.log("✅ Fallback DM sent successfully:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+            console.log("✅ Chat history updated with automation ID:", automation.id);
             await trackResponses(automation.id, 'DM');
             return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
           }
@@ -354,6 +356,7 @@ export async function POST(req: NextRequest) {
           console.log("✅ Fallback DM sent successfully:", direct_message);
           await createChatHistory(automation.id, userId, accountId, messageText);
           await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+          console.log("✅ Chat history updated with automation ID:", automation.id);
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
@@ -361,12 +364,7 @@ export async function POST(req: NextRequest) {
         if (!isOngoing) {
           try {
             const messageResponse = "Hello! How can we assist you with our products today?";
-            console.log("📤 Sending static DM for non-PRO user:", {
-              entryId: accountId,
-              senderId: userId,
-              message: messageResponse,
-            });
-
+            console.log("📤 Sending static DM for non-PRO user:", { entryId: accountId, senderId: userId, message: messageResponse });
             const direct_message = await sendDM(accountId, userId, messageResponse, token);
             console.log("📬 DM Response:", direct_message);
 
