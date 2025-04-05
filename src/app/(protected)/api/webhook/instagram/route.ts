@@ -19,22 +19,33 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Dynamic fallback (unchanged for simplicity)
-function generateSmartFallback(messageText: string): string {
+// Enhanced smart fallback with context awareness
+function generateSmartFallback(messageText: string, history: { role: string; content: string }[], prompt?: string): string {
   const lowerText = messageText.toLowerCase();
-  if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-    return "Yes, we ship to the USA with standard rates starting at $5. What product are you interested in ordering?";
-  } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-    return "We offer various colors for our products. Which color would you like?";
-  } else if (lowerText.includes('size') || lowerText.includes('type')) {
-    return "We offer multiple sizes and types. What specific size or type are you looking for?";
-  } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-    return "Prices vary by product. What are you interested in?";
-  } else if (lowerText.includes('hello') || lowerText.includes('hi')) {
-    return "Hi there! How can I assist you today?";
-  } else {
-    return "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
+  const lastMessage = history.length > 0 ? history[history.length - 1].content : null;
+
+  // Avoid repeating the last message
+  const defaultResponse = "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
+  if (lastMessage === defaultResponse) {
+    return "I’d love to help! What specific details can I assist you with today?";
   }
+
+  // Use prompt for context if available
+  if (prompt) {
+    if (lowerText.includes('shipping') || lowerText.includes('usa')) {
+      return `${prompt.includes('shipping') ? 'We handle shipping—details depend on your order.' : 'Shipping info varies.'} What are you interested in?`;
+    } else if (lowerText.includes('color') || lowerText.includes('colour')) {
+      return `${prompt.includes('color') ? 'We have multiple color options.' : 'Colors depend on the product.'} Which one do you prefer?`;
+    } else if (lowerText.includes('size') || lowerText.includes('type')) {
+      return `${prompt.includes('size') ? 'Sizes vary by item.' : 'We offer different types.'} What are you looking for?`;
+    } else if (lowerText.includes('price') || lowerText.includes('cost')) {
+      return `${prompt.includes('price') ? 'Pricing depends on the product.' : 'Prices vary.'} What item interests you?`;
+    } else if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('heyyy')) {
+      return "Hey there! How can I assist you today based on our offerings?";
+    }
+  }
+
+  return defaultResponse;
 }
 
 // Main webhook handler
@@ -71,7 +82,7 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
-          listener: true, // Includes listener, prompt, commentReply
+          listener: true,
           User: {
             select: {
               subscription: { select: { plan: true } },
@@ -114,7 +125,6 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
-          // Use listener.prompt as training data for SMARTAI
           const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
@@ -141,7 +151,7 @@ export async function POST(req: NextRequest) {
             await trackResponses(automation.id, 'DM');
           } else {
             console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
-            const fallbackResponse = generateSmartFallback(commentText);
+            const fallbackResponse = generateSmartFallback(commentText, limitedHistory, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
             console.log("✅ Fallback DM sent successfully:", dmResponse);
@@ -151,7 +161,9 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error sending AI-powered DM (likely rate limit):", error);
-          const fallbackResponse = generateSmartFallback(commentText);
+          const { history } = await getChatHistory(commenterId, entry.id);
+          const limitedHistory = history.slice(-5);
+          const fallbackResponse = generateSmartFallback(commentText, limitedHistory, automation.listener?.prompt);
           console.log("📤 Sending smart fallback DM:", fallbackResponse);
           const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
           console.log("✅ Fallback DM sent successfully:", dmResponse);
@@ -245,7 +257,8 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
 
-      if (!automation.User?.integrations?.[0]?.token) {
+      const token = automation.User?.integrations?.[0]?.token;
+      if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
@@ -256,7 +269,6 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
-          // Use listener.prompt as training data for SMARTAI
           const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
             ? automation.listener.prompt
             : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
@@ -280,12 +292,7 @@ export async function POST(req: NextRequest) {
             console.log("✅ Chat history updated with automation ID:", automation.id);
 
             console.log("📤 Sending AI response as DM:", aiResponse);
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              aiResponse,
-              automation.User.integrations[0].token
-            );
+            const direct_message = await sendDM(accountId, userId, aiResponse, token);
 
             console.log("📬 DM Response:", direct_message);
 
@@ -299,14 +306,9 @@ export async function POST(req: NextRequest) {
             }
           } else {
             console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
-            const fallbackResponse = generateSmartFallback(messageText);
+            const fallbackResponse = generateSmartFallback(messageText, limitedHistory, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              fallbackResponse,
-              automation.User.integrations[0].token
-            );
+            const direct_message = await sendDM(accountId, userId, fallbackResponse, token);
             console.log("✅ Fallback DM sent successfully:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, fallbackResponse);
@@ -315,14 +317,10 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error in AI-powered block (likely rate limit):", error);
-          const fallbackResponse = generateSmartFallback(messageText);
+          const limitedHistory = history.slice(-5);
+          const fallbackResponse = generateSmartFallback(messageText, limitedHistory, automation.listener?.prompt);
           console.log("📤 Sending smart fallback DM:", fallbackResponse);
-          const direct_message = await sendDM(
-            accountId,
-            userId,
-            fallbackResponse,
-            automation.User.integrations[0].token
-          );
+          const direct_message = await sendDM(accountId, userId, fallbackResponse, token);
           console.log("✅ Fallback DM sent successfully:", direct_message);
           await createChatHistory(automation.id, userId, accountId, messageText);
           await createChatHistory(automation.id, accountId, userId, fallbackResponse);
@@ -339,12 +337,7 @@ export async function POST(req: NextRequest) {
               message: messageResponse,
             });
 
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              messageResponse,
-              automation.User.integrations[0].token
-            );
+            const direct_message = await sendDM(accountId, userId, messageResponse, token);
 
             console.log("📬 DM Response:", direct_message);
 
