@@ -22,28 +22,12 @@ export async function GET(req: NextRequest) {
 // Dynamic fallback using only the prompt
 function generateSmartFallback(messageText: string, prompt?: string): string {
   console.log("🔍 [Fallback] Message:", messageText, "Prompt:", prompt || 'None');
-  const lowerText = messageText.toLowerCase();
-
   if (!prompt || !prompt.trim()) {
-    console.log("⚠️ [Fallback] No prompt provided, using default");
+    console.log("⚠️ [Fallback] No prompt, using default");
     return "Hello! How can I assist you today?";
   }
-
-  const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
-  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2);
-  console.log("🔍 [Fallback] Keywords:", keywords, "Prompt sentences:", promptSentences);
-
-  for (const keyword of keywords) {
-    for (const sentence of promptSentences) {
-      if (sentence.toLowerCase().includes(keyword)) {
-        console.log("✅ [Fallback] Matched:", sentence);
-        return `${sentence}. How can I assist you further?`;
-      }
-    }
-  }
-
-  console.log("⚠️ [Fallback] No keyword match, returning full prompt");
-  return `${prompt}. How can I assist you further?`;
+  console.log("✅ [Fallback] Using prompt directly");
+  return prompt; // Simplified to just return the prompt
 }
 
 // Main webhook handler
@@ -52,7 +36,8 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-07-v4");
+    console.log("🔍 Code version: 2025-04-07-v6");
+    console.log("🔍 Payload received - Free or PRO:", webhook_payload.entry?.[0]?.id); // Early log with account ID
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -191,7 +176,7 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
           await trackResponses(automation.id, 'DM');
         }
-      } else { // Removed history.length === 0 condition for free plan comments
+      } else {
         console.log("🔍 Free plan comment detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(commentText, automation.listener.prompt)
@@ -216,7 +201,7 @@ export async function POST(req: NextRequest) {
     // Handle messages
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
-    console.log("🔍 Checking PRO payload reach"); // Added log
+    console.log("🔍 Checking PRO payload reach");
 
     if (messaging?.read || messaging?.message?.is_echo) {
       console.log("Skipping read receipt or echo message");
@@ -330,7 +315,7 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
-      } else { // Removed history.length === 0 condition for free plan messages
+      } else {
         console.log("🔍 Free plan message detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(messageText, automation.listener.prompt)
