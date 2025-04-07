@@ -37,9 +37,9 @@ function generateSmartFallback(messageText: string, prompt?: string): string {
         }
       }
     }
+    console.log("⚠️ [Fallback] No prompt match, using default");
   }
 
-  // Hardcoded fallbacks if no prompt match
   if (lowerText.includes('shipping') || lowerText.includes('usa')) {
     return "Yes, we ship to the USA with standard rates starting at $5. What product are you interested in ordering?";
   } else if (lowerText.includes('color') || lowerText.includes('colour')) {
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-06-v1");
+    console.log("🔍 Code version: 2025-04-06-v2");
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
       const commenterId = commentData.from.id;
 
       console.log("📝 Processing comment:", commentText);
+      console.log("🔍 Post ID:", postId);
 
       let automation = await client.automation.findFirst({
         where: {
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (!automation) {
-        console.log("❌ No automation found for post or account ID:", entry.id);
+        console.log("❌ No automation found for account ID:", entry.id);
         return NextResponse.json({ message: 'No automation found' }, { status: 200 });
       }
 
@@ -148,9 +149,11 @@ export async function POST(req: NextRequest) {
       }
 
       const { history } = await getChatHistory(commenterId, entry.id);
+      console.log("🔍 Comment history length:", history.length);
+
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Generating AI DM for PRO user");
+          console.log("🤖 Starting PRO AI processing");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
@@ -284,7 +287,7 @@ export async function POST(req: NextRequest) {
 
       if (automation.User?.subscription?.plan === 'PRO') {
         try {
-          console.log("🤖 Generating AI response for PRO user");
+          console.log("🤖 Starting PRO AI processing");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
