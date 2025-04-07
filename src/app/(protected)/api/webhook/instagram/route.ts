@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Simplified fallback to use prompt directly
+// Fallback response
 function generateSmartFallback(messageText: string, prompt?: string): string {
   console.log("🔍 [Fallback] Message:", messageText, "Prompt:", prompt || 'None');
   return prompt || "Hello! How can I assist you today?";
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-07-v8");
+    console.log("🔍 Code version: 2025-04-07-v9");
     console.log("🔍 Processing account:", webhook_payload.entry?.[0]?.id || 'Unknown');
 
     const entry = webhook_payload.entry?.[0];
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id;
     console.log("🔍 Account ID:", accountId);
 
-    // Fetch automation with broader query
+    // Fetch automation
     let automation = await client.automation.findFirst({
       where: {
         User: {
@@ -87,15 +87,18 @@ export async function POST(req: NextRequest) {
 
       console.log("📝 Comment:", commentText, "From:", commenterId);
 
-      // Always attempt comment reply if set
       if (automation.listener?.commentReply) {
         console.log("📤 Sending comment reply:", automation.listener.commentReply);
         try {
           const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
           console.log("✅ Comment reply sent:", replyResponse);
           await trackResponses(automation.id, 'COMMENT');
-        } catch (error) {
-          console.error("❌ Comment reply error:", error);
+        } catch (error: any) {
+          console.error("❌ Comment reply error:", error.message);
+          if (error.response?.status === 401) {
+            console.log("❌ Token invalid - please refresh Instagram access token");
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+          }
         }
       }
 
@@ -126,9 +129,15 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, commenterId, accountId, commentText);
           await createChatHistory(automation.id, accountId, commenterId, aiResponse);
           await trackResponses(automation.id, 'DM');
-        } catch (error) {
-          console.error("❌ PRO comment error:", error);
+        } catch (error: any) {
+          console.error("❌ PRO comment error:", error.message);
+          if (error.response?.status === 401) {
+            console.log("❌ Token invalid - please refresh Instagram access token");
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+          }
+          // Fallback only if not a token issue
           const fallback = generateSmartFallback(commentText, automation.listener?.prompt);
+          console.log("📤 Sending fallback DM:", fallback);
           await sendDM(accountId, commenterId, fallback, token);
         }
       } else if (history.length === 0) {
@@ -141,11 +150,13 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, commenterId, accountId, commentText);
           await createChatHistory(automation.id, accountId, commenterId, freeResponse);
           await trackResponses(automation.id, 'DM');
-        } catch (error) {
-          console.error("❌ Free DM error:", error);
+        } catch (error: any) {
+          console.error("❌ Free DM error:", error.message);
+          if (error.response?.status === 401) {
+            console.log("❌ Token invalid - please refresh Instagram access token");
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+          }
         }
-      } else {
-        console.log("⚠️ Free plan: No follow-up");
       }
 
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
@@ -195,10 +206,16 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, accountId, userId, aiResponse);
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
-        } catch (error) {
-          console.error("❌ PRO message error:", error);
+        } catch (error: any) {
+          console.error("❌ PRO message error:", error.message);
+          if (error.response?.status === 401) {
+            console.log("❌ Token invalid - please refresh Instagram access token");
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+          }
           const fallback = generateSmartFallback(messageText, automation.listener?.prompt);
-          await sendDM(accountId, userId, fallback, token);
+          console.log("📤 Sending fallback DM:", fallback);
+          const direct_message = await sendDM(accountId, userId, fallback, token);
+          console.log("✅ Fallback DM sent:", direct_message);
           return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
         }
       } else if (history.length === 0) {
@@ -216,21 +233,25 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, accountId, userId, freeResponse);
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'Free DM sent' }, { status: 200 });
-        } catch (error) {
-          console.error("❌ Free DM error:", error);
+        } catch (error: any) {
+          console.error("❌ Free DM error:", error.message);
+          if (error.response?.status === 401) {
+            console.log("❌ Token invalid - please refresh Instagram access token");
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+          }
           return NextResponse.json({ message: 'Error sending free DM' }, { status: 500 });
         }
-      } else {
-        console.log("⚠️ Free plan: No follow-up");
-        return NextResponse.json({ message: 'No follow-up' }, { status: 200 });
       }
+
+      console.log("⚠️ No action taken for follow-up message");
+      return NextResponse.json({ message: 'No follow-up' }, { status: 200 });
     }
 
     console.log("🔍 No actionable payload");
     console.log("=== WEBHOOK DEBUG END ===");
     return NextResponse.json({ message: 'No action taken' }, { status: 200 });
-  } catch (error) {
-    console.error("❌ Webhook Error:", error);
+  } catch (error: any) {
+    console.error("❌ Webhook Error:", error.message);
     return NextResponse.json({ message: 'Webhook error' }, { status: 500 });
   }
 }
