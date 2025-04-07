@@ -27,7 +27,7 @@ function generateSmartFallback(messageText: string, prompt?: string): string {
     return "Hello! How can I assist you today?";
   }
   console.log("✅ [Fallback] Using prompt directly");
-  return prompt; // Simplified to just return the prompt
+  return prompt;
 }
 
 // Main webhook handler
@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-07-v6");
-    console.log("🔍 Payload received - Free or PRO:", webhook_payload.entry?.[0]?.id); // Early log with account ID
+    console.log("🔍 Code version: 2025-04-07-v7");
+    console.log("🔍 Payload received - Account ID:", webhook_payload.entry?.[0]?.id);
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -154,7 +154,6 @@ export async function POST(req: NextRequest) {
             console.log("✅ DM sent:", dmResponse);
             await createChatHistory(automation.id, commenterId, entry.id, commentText);
             await createChatHistory(automation.id, entry.id, commenterId, aiResponse);
-            console.log("✅ Chat history updated with ID:", automation.id);
             await trackResponses(automation.id, 'DM');
           } else {
             console.log("⚠️ AI returned no response, using fallback");
@@ -176,8 +175,8 @@ export async function POST(req: NextRequest) {
           await createChatHistory(automation.id, entry.id, commenterId, fallbackResponse);
           await trackResponses(automation.id, 'DM');
         }
-      } else {
-        console.log("🔍 Free plan comment detected");
+      } else if (history.length === 0) { // Reinstated first-message logic
+        console.log("🔍 Free plan first comment detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(commentText, automation.listener.prompt)
           : "Hello! How can we assist you today?";
@@ -187,11 +186,12 @@ export async function POST(req: NextRequest) {
           console.log("✅ Free plan DM sent:", dmResponse);
           await createChatHistory(automation.id, commenterId, entry.id, commentText);
           await createChatHistory(automation.id, entry.id, commenterId, freeResponse);
-          console.log("✅ Chat history updated with ID:", automation.id);
           await trackResponses(automation.id, 'DM');
         } catch (error) {
           console.error("❌ Error sending free plan DM:", error);
         }
+      } else {
+        console.log("⚠️ Free plan: No follow-up for comment");
       }
 
       console.log("✅ Comment processing completed");
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
     // Handle messages
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
-    console.log("🔍 Checking PRO payload reach");
+    console.log("🔍 Checking message payload reach");
 
     if (messaging?.read || messaging?.message?.is_echo) {
       console.log("Skipping read receipt or echo message");
@@ -290,7 +290,6 @@ export async function POST(req: NextRequest) {
             console.log("✅ DM sent:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, aiResponse);
-            console.log("✅ Chat history updated with ID:", automation.id);
             await trackResponses(automation.id, 'DM');
             return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
           } else {
@@ -315,8 +314,8 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
-      } else {
-        console.log("🔍 Free plan message detected");
+      } else if (history.length === 0) { // Reinstated first-message logic
+        console.log("🔍 Free plan first message detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(messageText, automation.listener.prompt)
           : "Hello! How can we assist you today?";
@@ -326,13 +325,15 @@ export async function POST(req: NextRequest) {
           console.log("✅ Free plan DM sent:", direct_message);
           await createChatHistory(automation.id, userId, accountId, messageText);
           await createChatHistory(automation.id, accountId, userId, freeResponse);
-          console.log("✅ Chat history updated with ID:", automation.id);
           await trackResponses(automation.id, 'DM');
           return NextResponse.json({ message: 'Free plan DM sent' }, { status: 200 });
         } catch (error) {
           console.error("❌ Error sending free plan DM:", error);
           return NextResponse.json({ message: 'Error sending free plan DM' }, { status: 500 });
         }
+      } else {
+        console.log("⚠️ Free plan: No follow-up response");
+        return NextResponse.json({ message: 'No follow-up for free plan' }, { status: 200 });
       }
     }
 
