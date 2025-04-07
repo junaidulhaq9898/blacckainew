@@ -19,40 +19,31 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Dynamic fallback with prompt support
+// Dynamic fallback using only the prompt
 function generateSmartFallback(messageText: string, prompt?: string): string {
   console.log("🔍 [Fallback] Message:", messageText, "Prompt:", prompt || 'None');
   const lowerText = messageText.toLowerCase();
 
-  if (prompt && prompt.trim()) {
-    const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
-    const keywords = lowerText.split(/\s+/).filter(word => word.length > 2);
-    console.log("🔍 [Fallback] Keywords:", keywords, "Prompt sentences:", promptSentences);
+  if (!prompt || !prompt.trim()) {
+    console.log("⚠️ [Fallback] No prompt provided, using default");
+    return "Hello! How can I assist you today?";
+  }
 
-    for (const keyword of keywords) {
-      for (const sentence of promptSentences) {
-        if (sentence.toLowerCase().includes(keyword)) {
-          console.log("✅ [Fallback] Matched:", sentence);
-          return `${sentence}. How can I assist you further?`;
-        }
+  const promptSentences = prompt.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
+  const keywords = lowerText.split(/\s+/).filter(word => word.length > 2);
+  console.log("🔍 [Fallback] Keywords:", keywords, "Prompt sentences:", promptSentences);
+
+  for (const keyword of keywords) {
+    for (const sentence of promptSentences) {
+      if (sentence.toLowerCase().includes(keyword)) {
+        console.log("✅ [Fallback] Matched:", sentence);
+        return `${sentence}. How can I assist you further?`;
       }
     }
-    console.log("⚠️ [Fallback] No prompt match, using default");
   }
 
-  if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-    return "Yes, we ship to the USA with standard rates starting at $5. What product are you interested in ordering?";
-  } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-    return "We offer various colors for our products. Which color would you like?";
-  } else if (lowerText.includes('size') || lowerText.includes('type')) {
-    return "We offer multiple sizes and types. What specific size or type are you looking for?";
-  } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-    return "Prices vary by product. What are you interested in?";
-  } else if (lowerText.includes('hello') || lowerText.includes('hi')) {
-    return "Hi there! How can I assist you today?";
-  } else {
-    return "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
-  }
+  console.log("⚠️ [Fallback] No keyword match, returning full prompt");
+  return `${prompt}. How can I assist you further?`;
 }
 
 // Main webhook handler
@@ -61,7 +52,7 @@ export async function POST(req: NextRequest) {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-06-v2");
+    console.log("🔍 Code version: 2025-04-07-v2");
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
@@ -73,14 +64,14 @@ export async function POST(req: NextRequest) {
 
     // Handle comments
     if (entry.changes && entry.changes[0].field === 'comments') {
+      console.log("🔍 Processing comment payload");
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
       const commentId = commentData.id;
       const postId = commentData.media.id;
       const commenterId = commentData.from.id;
 
-      console.log("📝 Processing comment:", commentText);
-      console.log("🔍 Post ID:", postId);
+      console.log("📝 Processing comment:", commentText, "Post ID:", postId);
 
       let automation = await client.automation.findFirst({
         where: {
@@ -128,6 +119,7 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation ID:", automation.id, "Plan:", automation.User?.subscription?.plan);
       console.log("🔍 Listener config:", JSON.stringify(automation.listener));
+      console.log("🔍 Token available:", !!automation.User?.integrations?.[0]?.token);
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
@@ -152,8 +144,8 @@ export async function POST(req: NextRequest) {
       console.log("🔍 Comment history length:", history.length);
 
       if (automation.User?.subscription?.plan === 'PRO') {
+        console.log("🤖 Starting PRO comment processing");
         try {
-          console.log("🤖 Starting PRO AI processing");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
@@ -200,6 +192,7 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'DM');
         }
       } else if (history.length === 0) {
+        console.log("🔍 Free plan first comment detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(commentText, automation.listener.prompt)
           : "Hello! How can we assist you today?";
@@ -215,7 +208,7 @@ export async function POST(req: NextRequest) {
           console.error("❌ Error sending free plan DM:", error);
         }
       } else {
-        console.log("⚠️ Free plan: No follow-up response");
+        console.log("⚠️ Free plan: No follow-up response for comment");
       }
 
       console.log("✅ Comment processing completed");
@@ -232,6 +225,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (messaging?.message?.text) {
+      console.log("🔍 Processing message payload");
       const messageText = messaging.message.text;
       console.log("📝 Processing message:", messageText);
 
@@ -278,6 +272,7 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation ID:", automation.id, "Plan:", automation.User?.subscription?.plan);
       console.log("🔍 Listener config:", JSON.stringify(automation.listener));
+      console.log("🔍 Token available:", !!automation.User?.integrations?.[0]?.token);
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
@@ -286,8 +281,8 @@ export async function POST(req: NextRequest) {
       }
 
       if (automation.User?.subscription?.plan === 'PRO') {
+        console.log("🤖 Starting PRO message processing");
         try {
-          console.log("🤖 Starting PRO AI processing");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
@@ -337,6 +332,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
       } else if (!isOngoing) {
+        console.log("🔍 Free plan first message detected");
         const freeResponse = automation.listener?.prompt
           ? generateSmartFallback(messageText, automation.listener.prompt)
           : "Hello! How can we assist you today?";
@@ -359,6 +355,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log("🔍 No actionable payload detected");
     console.log("=== WEBHOOK DEBUG END ===");
     return NextResponse.json({ message: 'No automation set' }, { status: 200 });
   } catch (error) {
