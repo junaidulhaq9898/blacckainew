@@ -11,6 +11,7 @@ import { sendDM, sendCommentReply } from '@/lib/fetch';
 import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 // Webhook verification endpoint
 export async function GET(req: NextRequest) {
@@ -24,13 +25,25 @@ function generateSmartFallback(messageText: string, prompt?: string): string {
   return prompt || "Hello! How can I assist you today?";
 }
 
+// Validate token with Instagram API
+async function validateToken(token: string): Promise<boolean> {
+  try {
+    await axios.get(`https://graph.instagram.com/me?fields=id&access_token=${token}`);
+    console.log("✅ Token validated successfully");
+    return true;
+  } catch (error: any) {
+    console.error("❌ Token validation failed:", error.response?.data?.error?.message || error.message);
+    return false;
+  }
+}
+
 // Main webhook handler
 export async function POST(req: NextRequest) {
   try {
     const webhook_payload = await req.json();
     console.log("=== WEBHOOK DEBUG START ===");
     console.log("Full Webhook Payload:", JSON.stringify(webhook_payload, null, 2));
-    console.log("🔍 Code version: 2025-04-07-v9");
+    console.log("🔍 Code version: 2025-04-07-v10");
     console.log("🔍 Processing account:", webhook_payload.entry?.[0]?.id || 'Unknown');
 
     const entry = webhook_payload.entry?.[0];
@@ -42,7 +55,7 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id;
     console.log("🔍 Account ID:", accountId);
 
-    // Fetch automation
+    // Fetch automation with debug info
     let automation = await client.automation.findFirst({
       where: {
         User: {
@@ -64,7 +77,16 @@ export async function POST(req: NextRequest) {
     });
 
     if (!automation) {
-      console.log("❌ No automation found for account ID:", accountId);
+      const integrations = await client.integrations.findMany({
+        where: { instagramId: accountId },
+        select: { userId: true, token: true },
+      });
+      console.log("🔍 Integrations found:", JSON.stringify(integrations));
+      if (integrations.length === 0) {
+        console.log("❌ No integrations for account ID:", accountId);
+      } else {
+        console.log("❌ Automation missing but integration exists for account ID:", accountId);
+      }
       return NextResponse.json({ message: 'No automation found' }, { status: 200 });
     }
 
@@ -75,6 +97,13 @@ export async function POST(req: NextRequest) {
     if (!token) {
       console.log("❌ No valid token for account:", accountId);
       return NextResponse.json({ message: 'No valid token' }, { status: 200 });
+    }
+
+    // Validate token before proceeding
+    const isTokenValid = await validateToken(token);
+    if (!isTokenValid) {
+      console.log("❌ Token invalid - please refresh Instagram access token");
+      return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
     }
 
     // Handle comments
@@ -95,10 +124,7 @@ export async function POST(req: NextRequest) {
           await trackResponses(automation.id, 'COMMENT');
         } catch (error: any) {
           console.error("❌ Comment reply error:", error.message);
-          if (error.response?.status === 401) {
-            console.log("❌ Token invalid - please refresh Instagram access token");
-            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
-          }
+          return NextResponse.json({ message: 'Comment reply failed' }, { status: 500 });
         }
       }
 
@@ -113,50 +139,30 @@ export async function POST(req: NextRequest) {
         const aiPrompt = automation.listener?.prompt || "You are a customer service assistant. Answer in 1-2 sentences.";
         console.log("🔍 AI Prompt:", aiPrompt);
 
-        try {
-          const smart_ai_message = await openai.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
-            messages: [
-              { role: 'system', content: aiPrompt },
-              ...limitedHistory,
-            ],
-          });
+        const smart_ai_message = await openai.chat.completions.create({
+          model: 'google/gemma-3-27b-it:free',
+          messages: [
+            { role: 'system', content: aiPrompt },
+            ...limitedHistory,
+          ],
+        });
 
-          const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback(commentText, aiPrompt);
-          console.log("📤 Sending AI DM:", aiResponse);
-          const dmResponse = await sendDM(accountId, commenterId, aiResponse, token);
-          console.log("✅ DM sent:", dmResponse);
-          await createChatHistory(automation.id, commenterId, accountId, commentText);
-          await createChatHistory(automation.id, accountId, commenterId, aiResponse);
-          await trackResponses(automation.id, 'DM');
-        } catch (error: any) {
-          console.error("❌ PRO comment error:", error.message);
-          if (error.response?.status === 401) {
-            console.log("❌ Token invalid - please refresh Instagram access token");
-            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
-          }
-          // Fallback only if not a token issue
-          const fallback = generateSmartFallback(commentText, automation.listener?.prompt);
-          console.log("📤 Sending fallback DM:", fallback);
-          await sendDM(accountId, commenterId, fallback, token);
-        }
+        const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback(commentText, aiPrompt);
+        console.log("📤 Sending AI DM:", aiResponse);
+        const dmResponse = await sendDM(accountId, commenterId, aiResponse, token);
+        console.log("✅ DM sent:", dmResponse);
+        await createChatHistory(automation.id, commenterId, accountId, commentText);
+        await createChatHistory(automation.id, accountId, commenterId, aiResponse);
+        await trackResponses(automation.id, 'DM');
       } else if (history.length === 0) {
         console.log("🔍 Free plan first comment");
         const freeResponse = generateSmartFallback(commentText, automation.listener?.prompt);
         console.log("📤 Sending free DM:", freeResponse);
-        try {
-          const dmResponse = await sendDM(accountId, commenterId, freeResponse, token);
-          console.log("✅ Free DM sent:", dmResponse);
-          await createChatHistory(automation.id, commenterId, accountId, commentText);
-          await createChatHistory(automation.id, accountId, commenterId, freeResponse);
-          await trackResponses(automation.id, 'DM');
-        } catch (error: any) {
-          console.error("❌ Free DM error:", error.message);
-          if (error.response?.status === 401) {
-            console.log("❌ Token invalid - please refresh Instagram access token");
-            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
-          }
-        }
+        const dmResponse = await sendDM(accountId, commenterId, freeResponse, token);
+        console.log("✅ Free DM sent:", dmResponse);
+        await createChatHistory(automation.id, commenterId, accountId, commentText);
+        await createChatHistory(automation.id, accountId, commenterId, freeResponse);
+        await trackResponses(automation.id, 'DM');
       }
 
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
@@ -189,35 +195,22 @@ export async function POST(req: NextRequest) {
         const aiPrompt = automation.listener?.prompt || "You are a customer service assistant. Answer in 1-2 sentences.";
         console.log("🔍 AI Prompt:", aiPrompt);
 
-        try {
-          const smart_ai_message = await openai.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
-            messages: [
-              { role: 'system', content: aiPrompt },
-              ...limitedHistory,
-            ],
-          });
+        const smart_ai_message = await openai.chat.completions.create({
+          model: 'google/gemma-3-27b-it:free',
+          messages: [
+            { role: 'system', content: aiPrompt },
+            ...limitedHistory,
+          ],
+        });
 
-          const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback(messageText, aiPrompt);
-          console.log("📤 Sending AI DM:", aiResponse);
-          const direct_message = await sendDM(accountId, userId, aiResponse, token);
-          console.log("✅ DM sent:", direct_message);
-          await createChatHistory(automation.id, userId, accountId, messageText);
-          await createChatHistory(automation.id, accountId, userId, aiResponse);
-          await trackResponses(automation.id, 'DM');
-          return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
-        } catch (error: any) {
-          console.error("❌ PRO message error:", error.message);
-          if (error.response?.status === 401) {
-            console.log("❌ Token invalid - please refresh Instagram access token");
-            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
-          }
-          const fallback = generateSmartFallback(messageText, automation.listener?.prompt);
-          console.log("📤 Sending fallback DM:", fallback);
-          const direct_message = await sendDM(accountId, userId, fallback, token);
-          console.log("✅ Fallback DM sent:", direct_message);
-          return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
-        }
+        const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback(messageText, aiPrompt);
+        console.log("📤 Sending AI DM:", aiResponse);
+        const direct_message = await sendDM(accountId, userId, aiResponse, token);
+        console.log("✅ DM sent:", direct_message);
+        await createChatHistory(automation.id, userId, accountId, messageText);
+        await createChatHistory(automation.id, accountId, userId, aiResponse);
+        await trackResponses(automation.id, 'DM');
+        return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
       } else if (history.length === 0) {
         console.log("🔍 Free plan first message");
         const matcher = await matchKeyword(messageText);
@@ -226,21 +219,12 @@ export async function POST(req: NextRequest) {
           ? generateSmartFallback(messageText, automation.listener?.prompt)
           : "Hello! How can I assist you today?";
         console.log("📤 Sending free DM:", freeResponse);
-        try {
-          const direct_message = await sendDM(accountId, userId, freeResponse, token);
-          console.log("✅ Free DM sent:", direct_message);
-          await createChatHistory(automation.id, userId, accountId, messageText);
-          await createChatHistory(automation.id, accountId, userId, freeResponse);
-          await trackResponses(automation.id, 'DM');
-          return NextResponse.json({ message: 'Free DM sent' }, { status: 200 });
-        } catch (error: any) {
-          console.error("❌ Free DM error:", error.message);
-          if (error.response?.status === 401) {
-            console.log("❌ Token invalid - please refresh Instagram access token");
-            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
-          }
-          return NextResponse.json({ message: 'Error sending free DM' }, { status: 500 });
-        }
+        const direct_message = await sendDM(accountId, userId, freeResponse, token);
+        console.log("✅ Free DM sent:", direct_message);
+        await createChatHistory(automation.id, userId, accountId, messageText);
+        await createChatHistory(automation.id, accountId, userId, freeResponse);
+        await trackResponses(automation.id, 'DM');
+        return NextResponse.json({ message: 'Free DM sent' }, { status: 200 });
       }
 
       console.log("⚠️ No action taken for follow-up message");
