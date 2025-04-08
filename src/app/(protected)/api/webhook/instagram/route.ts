@@ -173,7 +173,17 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
 
-      const token = automation.User?.integrations?.find((i) => i.instagramId === entry.id)?.token;
+      let token = automation.User?.integrations?.find((i) => i.instagramId === entry.id)?.token;
+      if (!token) {
+        console.log("⚠️ No token in automation integrations, checking Integrations table...");
+        const integration = await client.integrations.findFirst({
+          where: { instagramId: entry.id },
+          select: { token: true },
+        });
+        token = integration?.token;
+        console.log("🔍 Fallback token from Integrations:", token ? 'found' : 'not found');
+      }
+
       if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
@@ -354,7 +364,17 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
 
-      const token = automation.User?.integrations?.find((i) => i.instagramId === accountId)?.token;
+      let token = automation.User?.integrations?.find((i) => i.instagramId === accountId)?.token;
+      if (!token) {
+        console.log("⚠️ No token in automation integrations, checking Integrations table...");
+        const integration = await client.integrations.findFirst({
+          where: { instagramId: accountId },
+          select: { token: true },
+        });
+        token = integration?.token;
+        console.log("🔍 Fallback token from Integrations:", token ? 'found' : 'not found');
+      }
+
       if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
