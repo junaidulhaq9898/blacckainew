@@ -171,17 +171,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Automation found:", automation.id, "User ID:", automation.userId, "Integrations:", JSON.stringify(automation.User?.integrations));
 
       let token = automation.User?.integrations?.find((i) => i.instagramId === entry.id)?.token;
       if (!token) {
         console.log("⚠️ No token in automation integrations, checking Integrations table...");
         const integration = await client.integrations.findFirst({
           where: { instagramId: entry.id },
-          select: { token: true },
+          select: { userId: true, token: true, instagramId: true },
         });
+        console.log("🔍 Integration lookup:", JSON.stringify(integration));
         token = integration?.token;
-        console.log("🔍 Fallback token from Integrations:", token ? 'found' : 'not found');
       }
 
       if (!token) {
@@ -362,17 +362,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'Automation fetch failed' }, { status: 200 });
       }
 
-      console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Automation found:", automation.id, "User ID:", automation.userId, "Integrations:", JSON.stringify(automation.User?.integrations));
 
       let token = automation.User?.integrations?.find((i) => i.instagramId === accountId)?.token;
       if (!token) {
         console.log("⚠️ No token in automation integrations, checking Integrations table...");
         const integration = await client.integrations.findFirst({
           where: { instagramId: accountId },
-          select: { token: true },
+          select: { userId: true, token: true, instagramId: true },
         });
+        console.log("🔍 Integration lookup:", JSON.stringify(integration));
         token = integration?.token;
-        console.log("🔍 Fallback token from Integrations:", token ? 'found' : 'not found');
       }
 
       if (!token) {
