@@ -11,7 +11,6 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Minimal type based on usage, with nullable fields
 type AutomationWithIncludes = {
   id: string;
   listener?: {
@@ -132,12 +131,26 @@ export async function POST(req: NextRequest) {
     console.log("🔍 Automation:", automation.id, "Plan:", automation.User?.subscription?.plan);
     console.log("🔍 Prompt:", prompt);
 
+    // Debug integrations
     const integrations = automation.User?.integrations ?? [];
+    console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
     const matchingIntegration = integrations.find(i => i.instagramId === accountId);
-    const token = matchingIntegration?.token;
+    console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
+    let token = matchingIntegration?.token;
+
+    // Fallback to DB if no token found
     if (!token) {
-      console.log("❌ No valid token found");
-      return NextResponse.json({ message: 'No token' }, { status: 200 });
+      console.log("⚠️ No token in automation, querying DB...");
+      const integration = await client.integrations.findFirst({
+        where: { instagramId: accountId },
+        select: { token: true },
+      });
+      token = integration?.token;
+      if (!token) {
+        console.log("❌ Still no valid token found for instagramId:", accountId);
+        return NextResponse.json({ message: 'No token' }, { status: 200 });
+      }
+      console.log("✅ Found token in DB:", token);
     }
 
     const plan = automation.User?.subscription?.plan || 'FREE';
