@@ -19,21 +19,22 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-// Dynamic fallback (unchanged for simplicity)
-function generateSmartFallback(messageText: string): string {
+// Dynamic fallback
+function generateSmartFallback(messageText: string, prompt?: string): string {
   const lowerText = messageText.toLowerCase();
+  const basePrompt = prompt || "You are a customer service assistant for Delight Brush Industries, specializing in paint brushes.";
   if (lowerText.includes('shipping') || lowerText.includes('usa')) {
-    return "Yes, we ship to the USA with standard rates starting at $5. What product are you interested in ordering?";
+    return `${basePrompt} We ship to the USA with standard rates starting at $5. What product are you interested in ordering?`;
   } else if (lowerText.includes('color') || lowerText.includes('colour')) {
-    return "We offer various colors for our products. Which color would you like?";
+    return `${basePrompt} We offer various colors for our paint brushes. Which color would you like?`;
   } else if (lowerText.includes('size') || lowerText.includes('type')) {
-    return "We offer multiple sizes and types. What specific size or type are you looking for?";
+    return `${basePrompt} We offer multiple sizes and types of paint brushes. What specific size or type are you looking for?`;
   } else if (lowerText.includes('price') || lowerText.includes('cost')) {
-    return "Prices vary by product. What are you interested in?";
+    return `${basePrompt} Prices vary by product. What are you interested in?`;
   } else if (lowerText.includes('hello') || lowerText.includes('hi')) {
-    return "Hi there! How can I assist you today?";
+    return `${basePrompt} Hi there! How can I assist you with your paint brush needs today?`;
   } else {
-    return "I’m here to assist with your needs. Could you tell me more about what you’re looking for?";
+    return `${basePrompt} I’m here to assist with your paint brush inquiries. Could you tell me more about what you’re looking for?`;
   }
 }
 
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
           },
         },
         include: {
-          listener: true, // Includes listener, prompt, commentReply
+          listener: true,
           User: {
             select: {
               subscription: { select: { plan: true } },
@@ -114,10 +115,7 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: commentText });
 
-          // Use listener.prompt as training data for SMARTAI
-          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
-            ? automation.listener.prompt
-            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+          const aiPrompt = automation.listener?.prompt || "You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Respond concisely in 1-2 sentences.";
 
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
@@ -141,7 +139,7 @@ export async function POST(req: NextRequest) {
             await trackResponses(automation.id, 'DM');
           } else {
             console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
-            const fallbackResponse = generateSmartFallback(commentText);
+            const fallbackResponse = generateSmartFallback(commentText, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
             const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
             console.log("✅ Fallback DM sent successfully:", dmResponse);
@@ -151,7 +149,7 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error sending AI-powered DM (likely rate limit):", error);
-          const fallbackResponse = generateSmartFallback(commentText);
+          const fallbackResponse = generateSmartFallback(commentText, automation.listener?.prompt);
           console.log("📤 Sending smart fallback DM:", fallbackResponse);
           const dmResponse = await sendDM(entry.id, commenterId, fallbackResponse, token);
           console.log("✅ Fallback DM sent successfully:", dmResponse);
@@ -161,7 +159,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         try {
-          const templateMessage = `Thanks for your comment: "${commentText}"! How can we assist you today?`;
+          const templateMessage = automation.listener?.prompt || `Thanks for your comment: "${commentText}"! How can we assist you today?`;
           console.log("📤 Sending template DM for non-PRO user:", templateMessage);
           const dmResponse = await sendDM(entry.id, commenterId, templateMessage, token);
           console.log("✅ DM sent successfully:", dmResponse);
@@ -204,15 +202,12 @@ export async function POST(req: NextRequest) {
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
           console.log("🤖 Starting or restarting automation via keyword:", automation?.id);
-        } else if (isOngoing) {
-          const recentAutomation = await client.automation.findFirst({
+        } else {
+          // For new users, find automation by accountId if no keyword match
+          automation = await client.automation.findFirst({
             where: {
-              dms: {
-                some: {
-                  senderId: userId,
-                  reciever: accountId,
-                },
-              },
+              User: { integrations: { some: { token: { not: undefined } } } }, // Fixed null filter
+              posts: { some: { postid: accountId } },
             },
             include: {
               User: {
@@ -225,16 +220,12 @@ export async function POST(req: NextRequest) {
             },
             orderBy: { createdAt: 'desc' },
           });
-          if (recentAutomation) {
-            automation = recentAutomation;
-            console.log("🤖 Recovered automation from recent DMs:", automation.id);
+          if (automation) {
+            console.log("🤖 Started automation for new user via account link:", automation.id);
           } else {
-            console.log("❌ No keyword match and no recoverable automation");
+            console.log("❌ No automation found for new conversation");
             return NextResponse.json({ message: 'No automation found' }, { status: 200 });
           }
-        } else {
-          console.log("❌ No keyword match for new conversation");
-          return NextResponse.json({ message: 'No automation found' }, { status: 200 });
         }
       }
 
@@ -245,7 +236,8 @@ export async function POST(req: NextRequest) {
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
 
-      if (!automation.User?.integrations?.[0]?.token) {
+      const token = automation.User?.integrations?.[0]?.token;
+      if (!token) {
         console.log("❌ No valid integration token found");
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
@@ -256,10 +248,7 @@ export async function POST(req: NextRequest) {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
-          // Use listener.prompt as training data for SMARTAI
-          const aiPrompt = automation.listener?.listener === 'SMARTAI' && automation.listener?.prompt
-            ? automation.listener.prompt
-            : "You are a customer service assistant. Answer the user’s question concisely in 1-2 sentences based on general product inquiries.";
+          const aiPrompt = automation.listener?.prompt || "You are a customer service assistant for Delight Brush Industries, specializing in paint brushes. Respond concisely in 1-2 sentences.";
 
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
@@ -274,39 +263,19 @@ export async function POST(req: NextRequest) {
 
           if (smart_ai_message?.choices?.[0]?.message?.content) {
             const aiResponse = smart_ai_message.choices[0].message.content;
-
+            console.log("📤 Sending AI response as DM:", aiResponse);
+            const direct_message = await sendDM(accountId, userId, aiResponse, token);
+            console.log("✅ DM sent successfully:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, aiResponse);
             console.log("✅ Chat history updated with automation ID:", automation.id);
-
-            console.log("📤 Sending AI response as DM:", aiResponse);
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              aiResponse,
-              automation.User.integrations[0].token
-            );
-
-            console.log("📬 DM Response:", direct_message);
-
-            if (direct_message.status === 200) {
-              await trackResponses(automation.id, 'DM');
-              console.log("✅ AI response sent successfully");
-              return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
-            } else {
-              console.error("❌ DM failed with status:", direct_message.status);
-              return NextResponse.json({ message: 'Failed to send AI response' }, { status: 500 });
-            }
+            await trackResponses(automation.id, 'DM');
+            return NextResponse.json({ message: 'AI response sent' }, { status: 200 });
           } else {
             console.error("❌ No content in AI response (likely rate limit):", smart_ai_message);
-            const fallbackResponse = generateSmartFallback(messageText);
+            const fallbackResponse = generateSmartFallback(messageText, automation.listener?.prompt);
             console.log("📤 Sending smart fallback DM:", fallbackResponse);
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              fallbackResponse,
-              automation.User.integrations[0].token
-            );
+            const direct_message = await sendDM(accountId, userId, fallbackResponse, token);
             console.log("✅ Fallback DM sent successfully:", direct_message);
             await createChatHistory(automation.id, userId, accountId, messageText);
             await createChatHistory(automation.id, accountId, userId, fallbackResponse);
@@ -315,14 +284,9 @@ export async function POST(req: NextRequest) {
           }
         } catch (error) {
           console.error("❌ Error in AI-powered block (likely rate limit):", error);
-          const fallbackResponse = generateSmartFallback(messageText);
+          const fallbackResponse = generateSmartFallback(messageText, automation.listener?.prompt);
           console.log("📤 Sending smart fallback DM:", fallbackResponse);
-          const direct_message = await sendDM(
-            accountId,
-            userId,
-            fallbackResponse,
-            automation.User.integrations[0].token
-          );
+          const direct_message = await sendDM(accountId, userId, fallbackResponse, token);
           console.log("✅ Fallback DM sent successfully:", direct_message);
           await createChatHistory(automation.id, userId, accountId, messageText);
           await createChatHistory(automation.id, accountId, userId, fallbackResponse);
@@ -330,36 +294,18 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Fallback response sent' }, { status: 200 });
         }
       } else {
-        if (!isOngoing) {
-          try {
-            const messageResponse = "Hello! How can we assist you with our products today?";
-            console.log("📤 Sending static DM for non-PRO user:", {
-              entryId: accountId,
-              senderId: userId,
-              message: messageResponse,
-            });
-
-            const direct_message = await sendDM(
-              accountId,
-              userId,
-              messageResponse,
-              automation.User.integrations[0].token
-            );
-
-            console.log("📬 DM Response:", direct_message);
-
-            if (direct_message.status === 200) {
-              await trackResponses(automation.id, 'DM');
-              console.log("✅ Message sent successfully");
-              return NextResponse.json({ message: 'Message sent' }, { status: 200 });
-            }
-          } catch (error) {
-            console.error("❌ Error sending DM:", error);
-            return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
-          }
-        } else {
-          console.log("❌ Non-PRO user follow-up ignored");
-          return NextResponse.json({ message: 'No response for follow-up' }, { status: 200 });
+        try {
+          const templateMessage = automation.listener?.prompt || "Hello! How can we assist you with our products today?";
+          console.log("📤 Sending template DM for non-PRO user:", templateMessage);
+          const direct_message = await sendDM(accountId, userId, templateMessage, token);
+          console.log("✅ DM sent successfully:", direct_message);
+          await createChatHistory(automation.id, userId, accountId, messageText);
+          await createChatHistory(automation.id, accountId, userId, templateMessage);
+          await trackResponses(automation.id, 'DM');
+          return NextResponse.json({ message: 'Message sent' }, { status: 200 });
+        } catch (error) {
+          console.error("❌ Error sending template DM:", error);
+          return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
         }
       }
     }
