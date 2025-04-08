@@ -12,25 +12,21 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Adjusted Integration type to match Prisma schema
 interface Integration {
   token: string;
-  instagramId: string | null; // Changed to allow null
+  instagramId: string | null;
 }
 
-// Webhook verification endpoint
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
 }
 
-// Dynamic fallback
 function generateSmartFallback(messageText: string, prompt?: string): string {
-  const basePrompt = prompt || "I’m here to assist you with your business inquiries.";
-  return `${basePrompt} How can I assist you with: "${messageText}"?`;
+  const basePrompt = prompt || "I’m here to assist with your business needs.";
+  return `${basePrompt} How can I help with: "${messageText}"?`;
 }
 
-// Main webhook handler
 export async function POST(req: NextRequest) {
   try {
     const webhook_payload = await req.json();
@@ -45,7 +41,6 @@ export async function POST(req: NextRequest) {
 
     console.log("Entry ID:", entry.id);
 
-    // Handle comments
     if (entry.changes && entry.changes[0].field === 'comments') {
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
@@ -104,8 +99,8 @@ export async function POST(req: NextRequest) {
           limitedHistory.push({ role: 'user', content: commentText });
 
           const aiPrompt = automation.listener?.prompt
-            ? `${automation.listener.prompt} Respond only about your business and avoid mentioning AI or model details.`
-            : "You are a customer service assistant. Respond only about your business.";
+            ? `You are an assistant for a specific business. ${automation.listener.prompt} Respond only about the business and do not mention being an AI, model, or anything unrelated to the business.`
+            : "You are a customer service assistant for a business. Respond only about the business and do not mention being an AI or model.";
           console.log("🤖 AI Prompt Used:", aiPrompt);
 
           const smart_ai_message = await openai.chat.completions.create({
@@ -173,8 +168,8 @@ export async function POST(req: NextRequest) {
 
     if (messaging?.message?.text) {
       const messageText = messaging.message.text;
-      const userId = messaging.sender.id; // Sender (customer)
-      const accountId = messaging.recipient.id; // Receiver (Instagram account)
+      const userId = messaging.sender.id;
+      const accountId = messaging.recipient.id;
 
       console.log("📝 Processing message:", messageText);
       console.log("Sender ID (userId):", userId, "Recipient ID (accountId):", accountId);
@@ -200,7 +195,7 @@ export async function POST(req: NextRequest) {
                 integrations: {
                   some: {
                     token: { not: undefined },
-                    instagramId: accountId, // Adjust to your field name
+                    instagramId: accountId,
                   },
                 },
               },
@@ -246,8 +241,8 @@ export async function POST(req: NextRequest) {
           limitedHistory.push({ role: 'user', content: messageText });
 
           const aiPrompt = automation.listener?.prompt
-            ? `${automation.listener.prompt} Respond only about your business and avoid mentioning AI or model details.`
-            : "You are a customer service assistant. Respond only about your business.";
+            ? `You are an assistant for a specific business. ${automation.listener.prompt} Respond only about the business and do not mention being an AI, model, or anything unrelated to the business.`
+            : "You are a customer service assistant for a business. Respond only about the business and do not mention being an AI or model.";
           console.log("🤖 AI Prompt Used:", aiPrompt);
 
           const smart_ai_message = await openai.chat.completions.create({
