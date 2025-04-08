@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Listener prompt:", automation.listener?.prompt);
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
@@ -128,9 +129,13 @@ export async function POST(req: NextRequest) {
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [{ role: 'system', content: aiPrompt }, ...limitedHistory],
+            max_tokens: 200, // Limit to ~800-1000 chars
           });
 
-          const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback();
+          let aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback();
+          if (aiResponse.length > 1000) {
+            aiResponse = aiResponse.substring(0, 997) + "...";
+          }
           console.log("📤 Sending AI response as DM:", aiResponse);
           const dmResponse = await sendDM(entry.id, commenterId, aiResponse, token);
           console.log("✅ DM sent successfully:", dmResponse);
@@ -231,6 +236,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Listener prompt:", automation.listener?.prompt);
 
       const token = automation.User?.integrations?.[0]?.token;
       if (!token) {
@@ -249,9 +255,13 @@ export async function POST(req: NextRequest) {
           const smart_ai_message = await openai.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [{ role: 'system', content: aiPrompt }, ...limitedHistory],
+            max_tokens: 200, // Limit to ~800-1000 chars
           });
 
-          const aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback();
+          let aiResponse = smart_ai_message?.choices?.[0]?.message?.content || generateSmartFallback();
+          if (aiResponse.length > 1000) {
+            aiResponse = aiResponse.substring(0, 997) + "...";
+          }
           console.log("📤 Sending AI response as DM:", aiResponse);
           const dmResponse = await sendDM(accountId, userId, aiResponse, token);
           console.log("✅ DM sent successfully:", dmResponse);
