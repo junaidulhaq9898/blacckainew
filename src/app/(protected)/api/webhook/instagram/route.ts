@@ -23,13 +23,8 @@ type AutomationWithIncludes = {
     automationId?: string;
   } | null;
   User?: {
-    subscription?: {
-      plan?: string;
-    } | null;
-    integrations?: {
-      token: string;
-      instagramId?: string | null;
-    }[];
+    subscription?: { plan?: string } | null;
+    integrations?: { token: string; instagramId?: string | null }[];
   } | null;
   keywords?: { id?: string; word?: string; automationId?: string | null }[];
 };
@@ -107,9 +102,9 @@ export async function POST(req: NextRequest) {
             userId: integration.userId,
             listener: {
               create: {
-                prompt: `You are a helpful assistant for my business, WebProdigies_${accountId}.`,
+                prompt: `You are an assistant for WebProdigies_${accountId}.`,
                 commentReply: "ok",
-                listener: "MESSAGE",
+                listener: "SMARTAI",
               },
             },
           },
@@ -127,12 +122,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const prompt = automation.listener?.prompt || `You are a helpful assistant for my business, WebProdigies_${accountId}.`;
+    const prompt = automation.listener?.prompt || `You are an assistant for WebProdigies_${accountId}.`;
     console.log("🔍 Automation:", automation.id, "Plan:", automation.User?.subscription?.plan);
-    console.log("🔍 Prompt:", prompt);
+    console.log("🔍 Prompt from DB:", prompt);
 
     const integrations = automation.User?.integrations ?? [];
-    console.log("🔍 Integrations from automation:", JSON.stringify(integrations, null, 2));
+    console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
     const matchingIntegration = integrations.find(i => i.instagramId === accountId);
     console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
 
@@ -142,7 +137,7 @@ export async function POST(req: NextRequest) {
     if (automationToken) {
       token = automationToken;
     } else {
-      console.log("⚠️ No token in automation match, trying integrations fallback...");
+      console.log("⚠️ No token in automation, trying integrations...");
       const fallbackToken = integrations.length > 0 ? integrations[0].token : null;
       if (fallbackToken) {
         token = fallbackToken;
@@ -156,7 +151,7 @@ export async function POST(req: NextRequest) {
         console.log("🔍 DB Integration:", JSON.stringify(integration, null, 2));
         const dbToken = integration?.token;
         if (!dbToken) {
-          console.log("❌ No valid token found for instagramId:", accountId);
+          console.log("❌ No valid token for instagramId:", accountId);
           return NextResponse.json({ message: 'No token' }, { status: 200 });
         }
         token = dbToken;
@@ -172,7 +167,7 @@ export async function POST(req: NextRequest) {
         const limitedHistory = history.slice(-5);
         limitedHistory.push({ role: 'user', content: messageText });
 
-        const aiPrompt = `You are a business assistant for: ${prompt}\n\nRespond ONLY with business details from the prompt. No AI talk. Under 100 chars. Professional.`;
+        const aiPrompt = `${prompt} Respond ONLY with details about WebProdigies_${accountId}. No chit-chat. Under 100 chars.`;
         console.log("🔧 AI Prompt:", aiPrompt);
         const smart_ai_message = await openai.chat.completions.create({
           model: 'google/gemma-3-27b-it:free',
@@ -187,8 +182,8 @@ export async function POST(req: NextRequest) {
         console.log("🔍 Raw AI Response:", JSON.stringify(smart_ai_message, null, 2));
         let aiResponse = smart_ai_message?.choices?.[0]?.message?.content;
         if (!aiResponse || aiResponse.trim() === "") {
-          console.log("⚠️ AI returned empty response, using fallback");
-          aiResponse = generateSmartFallback(accountId);
+          console.log("⚠️ AI returned empty, using fallback");
+          aiResponse = `WebProdigies_${accountId} here! How can I assist?`;
         }
         if (aiResponse.length > 100) {
           aiResponse = aiResponse.substring(0, 97) + "...";
@@ -202,7 +197,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'AI sent' }, { status: 200 });
       } catch (error) {
         console.error("❌ AI error:", error);
-        const fallbackResponse = generateSmartFallback(accountId);
+        const fallbackResponse = `WebProdigies_${accountId} here! How can I assist?`;
         console.log("📤 Fallback:", fallbackResponse);
         try {
           const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
