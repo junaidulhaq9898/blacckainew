@@ -1,9 +1,6 @@
-// src/app/(protected)/api/webhook/instagram/route.ts
 import {
   createChatHistory,
   getChatHistory,
-  getKeywordAutomation,
-  matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM } from '@/lib/fetch';
@@ -11,6 +8,7 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Log test to confirm logging works
 console.log("=== Route file loaded ===");
 
 type AutomationWithIncludes = {
@@ -45,6 +43,7 @@ function generateSmartFallback(accountId: string, prompt: string): string {
 
 export async function POST(req: NextRequest) {
   console.log("=== WEBHOOK POST DEBUG START ===");
+
   try {
     const webhook_payload = await req.json();
     console.log("Payload received:", JSON.stringify(webhook_payload, null, 2));
@@ -54,8 +53,6 @@ export async function POST(req: NextRequest) {
       console.log("❌ No entry in payload");
       return NextResponse.json({ message: 'No entry' }, { status: 200 });
     }
-
-    console.log("Entry ID:", entry.id);
 
     const messaging = entry.messaging?.[0];
     if (!messaging?.message?.text || messaging.read || messaging.message.is_echo) {
@@ -72,27 +69,19 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id; // Instagram ID
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Fetch integration
-    let integration = await client.integrations.findFirst({
-      where: { instagramId: accountId },
+    // Fetch integration with instagramId stored as String
+    const integration = await client.integrations.findFirst({
+      where: { instagramId: String(accountId) },  // Ensure it's treated as a string
       select: { userId: true, token: true },
     });
-    console.log("🔍 Integration from DB:", JSON.stringify(integration, null, 2));
 
-    // Fallback if no integration
-    const FALLBACK_USER_ID = 'your_user_id_here'; // Replace with your User.id
-    const FALLBACK_TOKEN = 'your_valid_instagram_token_here'; // Replace with your token
+    console.log("🔍 Integration:", JSON.stringify(integration, null, 2));
     if (!integration || !integration.userId) {
       console.log("❌ No integration for:", accountId);
-      console.log("ℹ️ Using fallback integration");
-      integration = {
-        userId: FALLBACK_USER_ID,
-        token: FALLBACK_TOKEN,
-      };
-      console.log("🔍 Fallback Integration:", JSON.stringify(integration, null, 2));
+      return NextResponse.json({ message: 'No integration' }, { status: 200 });
     }
 
-    // Look for or create automation
+    // Look for automation
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
       where: { userId: integration.userId, instagramId: accountId },
       include: {
@@ -177,9 +166,9 @@ export async function POST(req: NextRequest) {
         token = fallbackToken;
         tokenSource = "integrations fallback";
       } else {
-        console.log("⚠️ No token in integrations, using DB/fallback token...");
+        console.log("⚠️ No token in integrations, using DB token...");
         token = integration.token;
-        tokenSource = "DB/fallback";
+        tokenSource = "DB";
       }
     }
     console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
@@ -187,16 +176,15 @@ export async function POST(req: NextRequest) {
     const plan = automation.User?.subscription?.plan || 'FREE';
     console.log("🔍 Subscription Plan:", plan);
 
-    // Force PRO logic since you're on PRO
-    console.log("🤖 Forcing PRO AI response");
-    try {
+    if (plan === 'PRO') {
+      console.log("🤖 PRO AI response");
       const limitedHistory = history.slice(-5);
       limitedHistory.push({ role: 'user', content: messageText });
 
       const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
       console.log("🔧 AI Prompt:", aiPrompt);
       const smart_ai_message = await openai.chat.completions.create({
-        model: 'google/gemma-3-27b-it:free', // Switch to 'gpt-3.5-turbo' if you have an OpenAI key
+        model: 'google/gemma-3-27b-it:free', 
         messages: [
           { role: 'system', content: aiPrompt },
           ...limitedHistory,
@@ -223,22 +211,15 @@ export async function POST(req: NextRequest) {
       await trackResponses(automation.id, 'DM');
       console.log("✅ Chat history and tracking updated");
       return NextResponse.json({ message: 'AI sent' }, { status: 200 });
-    } catch (error) {
-      console.error("❌ AI or DM error:", error);
-      const fallbackResponse = generateSmartFallback(accountId, prompt);
-      console.log("📤 Fallback response:", fallbackResponse);
-      try {
-        const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
-        console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
-        await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, fallbackResponse);
-        await trackResponses(automation.id, 'DM');
-        console.log("✅ Chat history and tracking updated for fallback");
-        return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
-      } catch (fallbackError) {
-        console.error("❌ Fallback error:", fallbackError);
-        return NextResponse.json({ message: 'Failed to send message' }, { status: 500 });
-      }
+    } else {
+      console.log("📤 Free response sent");
+      const messageResponse = `Thanks for reaching out! How can I assist you?`;
+      const dmResponse = await sendDM(accountId, userId, messageResponse, token);
+      console.log("✅ Free Response Sent:", JSON.stringify(dmResponse, null, 2));
+      await createChatHistory(automation.id, userId, accountId, messageText);
+      await createChatHistory(automation.id, accountId, userId, messageResponse);
+      await trackResponses(automation.id, 'DM');
+      return NextResponse.json({ message: 'FREE response sent' }, { status: 200 });
     }
   } catch (error) {
     console.error("❌ Webhook error:", error);
