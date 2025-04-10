@@ -1,9 +1,6 @@
-// src/app/(protected)/api/webhook/instagram/route.ts
 import {
   createChatHistory,
   getChatHistory,
-  getKeywordAutomation,
-  matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM } from '@/lib/fetch';
@@ -11,6 +8,7 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Log test to confirm logging works
 console.log("=== Route file loaded ===");
 
 type AutomationWithIncludes = {
@@ -44,7 +42,7 @@ function generateSmartFallback(accountId: string, prompt: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  console.log("=== WEBHOOK POST DEBUG START ===");
+  console.log("=== WEBHOOK POST DEBUG START ==="); // First log
   try {
     const webhook_payload = await req.json();
     console.log("Payload received:", JSON.stringify(webhook_payload, null, 2));
@@ -74,13 +72,12 @@ export async function POST(req: NextRequest) {
 
     // Fetch integration
     const integration = await client.integrations.findFirst({
-      where: { instagramId: accountId },
+      where: { instagramId: String(accountId) },  // Ensure it's treated as a string
       select: { userId: true, token: true },
     });
     console.log("🔍 Integration:", JSON.stringify(integration, null, 2));
     if (!integration || !integration.userId) {
       console.log("❌ No integration for:", accountId);
-      console.log("ℹ️ Please add an integration for this instagramId in the Integrations table");
       return NextResponse.json({ message: 'No integration' }, { status: 200 });
     }
 
@@ -188,7 +185,7 @@ export async function POST(req: NextRequest) {
       const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
       console.log("🔧 AI Prompt:", aiPrompt);
       const smart_ai_message = await openai.chat.completions.create({
-        model: 'google/gemma-3-27b-it:free', // Switch to 'gpt-3.5-turbo' if you have an OpenAI key
+        model: 'google/gemma-3-27b-it:free', // Switch to 'gpt-3.5-turbo' if needed
         messages: [
           { role: 'system', content: aiPrompt },
           ...limitedHistory,
