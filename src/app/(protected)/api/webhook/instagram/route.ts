@@ -1,4 +1,3 @@
-// src/app/(protected)/api/webhook/instagram/route.ts
 import {
   createChatHistory,
   getChatHistory,
@@ -12,6 +11,7 @@ import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
 type AutomationWithIncludes = {
+  active: any;
   id: string;
   instagramId?: string | null;
   listener?: {
@@ -55,11 +55,7 @@ export async function POST(req: NextRequest) {
 
     const messaging = entry.messaging?.[0];
     if (!messaging?.message?.text || messaging.read || messaging.message.is_echo) {
-      console.log("Skipping non-text, read, or echo:", {
-        hasText: !!messaging?.message?.text,
-        isRead: messaging?.read,
-        isEcho: messaging?.message?.is_echo,
-      });
+      console.log("Skipping non-text, read, or echo");
       return NextResponse.json({ message: 'Skipped' }, { status: 200 });
     }
 
@@ -68,18 +64,17 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id; // Instagram ID
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Fetch integration
+    // Fetch integration to get userId
     const integration = await client.integrations.findFirst({
       where: { instagramId: accountId },
       select: { userId: true, token: true },
     });
-    console.log("🔍 Integration:", JSON.stringify(integration, null, 2));
     if (!integration || !integration.userId) {
       console.log("❌ No integration for:", accountId);
       return NextResponse.json({ message: 'No integration' }, { status: 200 });
     }
 
-    // Look for automation
+    // Look for automation tied to this Instagram account
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
       where: { userId: integration.userId, instagramId: accountId },
       include: {
@@ -93,27 +88,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Check chat history with expiry
-    const { history, automationId: historyAutomationId } = await getChatHistory(userId, accountId);
-    const historyExpiryMinutes = 10;
-    const now = new Date();
-    const lastMessage = history.length > 0
-      ? await client.dms.findFirst({
-          where: { senderId: userId, reciever: accountId },
-          orderBy: { createdAt: 'desc' },
-          select: { createdAt: true },
-        })
-      : null;
-    const isHistoryExpired = lastMessage
-      ? (now.getTime() - new Date(lastMessage.createdAt).getTime()) / (1000 * 60) > historyExpiryMinutes
-      : true;
-    const isOngoing = history.length > 0 && !isHistoryExpired;
-
-    console.log("🔄 Ongoing:", isOngoing, "History length:", history.length, "History Automation ID:", historyAutomationId);
-    console.log("⏰ Last message time:", lastMessage?.createdAt, "Expired:", isHistoryExpired);
-
-    if (!automation) {
-      console.log("⚠️ No automation for this account, creating...");
+    // Check if automation is active
+    if (!automation || !automation.active) {
+      console.log("⚠️ Automation not active or not found, creating...");
       automation = await client.automation.create({
         data: {
           userId: integration.userId,
@@ -125,6 +102,7 @@ export async function POST(req: NextRequest) {
               listener: "SMARTAI",
             },
           },
+          active: true,  // Ensure automation is active
         },
         include: {
           listener: true,
@@ -136,16 +114,14 @@ export async function POST(req: NextRequest) {
           },
         },
       });
-      console.log("✅ Created automation:", automation.id);
-    } else if (historyAutomationId && historyAutomationId !== automation.id && !isHistoryExpired) {
-      console.log("⚠️ History Automation ID mismatch but not expired, sticking with:", automation.id);
+      console.log("✅ Created and activated automation:", automation.id);
     } else {
       console.log("🤖 Using existing automation:", automation.id);
     }
 
     console.log("🔍 Raw Automation Data:", JSON.stringify(automation, null, 2));
     const prompt = automation.listener?.prompt || `Assistant for WebProdigies_${accountId}`;
-    console.log("🔍 Automation:", automation.id, "Prompt:", prompt);
+    console.log("🔍 Prompt from DB:", prompt);
 
     const integrations = automation.User?.integrations ?? [];
     console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
@@ -172,57 +148,46 @@ export async function POST(req: NextRequest) {
     console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
 
     const plan = automation.User?.subscription?.plan || 'FREE';
-    console.log("🔍 Subscription Plan:", plan);
-
-    // Force PRO logic since you're on PRO plan
-    console.log("🤖 Forcing PRO AI response");
-    try {
-      const limitedHistory = history.slice(-5);
-      limitedHistory.push({ role: 'user', content: messageText });
-
-      const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
-      console.log("🔧 AI Prompt:", aiPrompt);
-      const smart_ai_message = await openai.chat.completions.create({
-        model: 'google/gemma-3-27b-it:free', // Check if this model is valid
-        messages: [
-          { role: 'system', content: aiPrompt },
-          ...limitedHistory,
-        ],
-        max_tokens: 40,
-        temperature: 0.1,
-      });
-
-      console.log("🔍 Raw AI Response:", JSON.stringify(smart_ai_message, null, 2));
-      let aiResponse = smart_ai_message?.choices?.[0]?.message?.content;
-      if (!aiResponse || aiResponse.trim() === "") {
-        console.log("⚠️ AI returned empty, using fallback");
-        aiResponse = generateSmartFallback(accountId, prompt);
-      }
-      if (aiResponse.length > 100) {
-        aiResponse = aiResponse.substring(0, 97) + "...";
-      }
-      console.log("📤 AI response:", aiResponse);
-
-      const dmResponse = await sendDM(accountId, userId, aiResponse, token);
-      console.log("✅ Sent DM:", JSON.stringify(dmResponse, null, 2));
-      await createChatHistory(automation.id, userId, accountId, messageText);
-      await createChatHistory(automation.id, accountId, userId, aiResponse);
-      await trackResponses(automation.id, 'DM');
-      return NextResponse.json({ message: 'AI sent' }, { status: 200 });
-    } catch (error) {
-      console.error("❌ AI or DM error:", error);
-      const fallbackResponse = generateSmartFallback(accountId, prompt);
-      console.log("📤 Fallback response:", fallbackResponse);
+    if (plan === 'PRO') {
       try {
-        const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
-        console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
+        console.log("🤖 PRO AI response");
+        const messageResponse = `Hello from ${accountId}! How can I assist?`;
+        console.log("📤 PRO response:", messageResponse);
+        const dmResponse = await sendDM(accountId, userId, messageResponse, token);
+        console.log("✅ Sent DM:", JSON.stringify(dmResponse, null, 2));
         await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+        await createChatHistory(automation.id, accountId, userId, messageResponse);
         await trackResponses(automation.id, 'DM');
-        return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
-      } catch (fallbackError) {
-        console.error("❌ Fallback error:", fallbackError);
-        return NextResponse.json({ message: 'Failed to send message' }, { status: 500 });
+        return NextResponse.json({ message: 'AI sent' }, { status: 200 });
+      } catch (error) {
+        console.error("❌ AI error:", error);
+        const fallbackResponse = generateSmartFallback(accountId, prompt);
+        console.log("📤 Fallback:", fallbackResponse);
+        try {
+          const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
+          console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
+          await createChatHistory(automation.id, userId, accountId, messageText);
+          await createChatHistory(automation.id, accountId, userId, fallbackResponse);
+          await trackResponses(automation.id, 'DM');
+          return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
+        } catch (fallbackError) {
+          console.error("❌ Fallback error:", fallbackError);
+          return NextResponse.json({ message: 'Failed to send message' }, { status: 500 });
+        }
+      }
+    } else {
+      try {
+        const messageResponse = `Hello from ${accountId}! How can I help?`;
+        console.log("📤 FREE response:", messageResponse);
+        const dmResponse = await sendDM(accountId, userId, messageResponse, token);
+        console.log("✅ Sent:", JSON.stringify(dmResponse, null, 2));
+        await createChatHistory(automation.id, userId, accountId, messageText);
+        await createChatHistory(automation.id, accountId, userId, messageResponse);
+        await trackResponses(automation.id, 'DM');
+        return NextResponse.json({ message: 'FREE sent' }, { status: 200 });
+      } catch (error) {
+        console.error("❌ FREE error:", error);
+        return NextResponse.json({ message: 'Error' }, { status: 500 });
       }
     }
   } catch (error) {
