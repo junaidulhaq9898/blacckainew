@@ -8,9 +8,6 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Log test to confirm logging works
-console.log("=== Route file loaded ===");
-
 type AutomationWithIncludes = {
   id: string;
   instagramId?: string | null;
@@ -29,13 +26,6 @@ type AutomationWithIncludes = {
   } | null;
   keywords?: { id?: string; word?: string; automationId?: string | null }[];
 };
-
-export async function GET(req: NextRequest) {
-  console.log("=== GET request received ===");
-  const hub = req.nextUrl.searchParams.get('hub.challenge');
-  console.log("Hub challenge:", hub);
-  return new NextResponse(hub);
-}
 
 function generateSmartFallback(accountId: string, prompt: string): string {
   return `${prompt} fallback for ${accountId}`;
@@ -69,7 +59,7 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id; // Instagram ID
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Fetch integration with instagramId stored as String
+    // Fetch integration with instagramId from the Integrations table
     const integration = await client.integrations.findFirst({
       where: { instagramId: String(accountId) },  // Ensure it's treated as a string
       select: { userId: true, token: true },
@@ -81,9 +71,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'No integration' }, { status: 200 });
     }
 
-    // Look for automation
+    // Look for automation, now only filtered by userId (since instagramId is removed from Automation)
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
-      where: { userId: integration.userId, instagramId: accountId },
+      where: { userId: integration.userId },
       include: {
         listener: true,
         User: {
@@ -119,7 +109,6 @@ export async function POST(req: NextRequest) {
       automation = await client.automation.create({
         data: {
           userId: integration.userId,
-          instagramId: accountId,
           listener: {
             create: {
               prompt: `Assistant for WebProdigies_${accountId}`,
@@ -150,8 +139,9 @@ export async function POST(req: NextRequest) {
     console.log("🔍 Automation:", automation.id, "Prompt:", prompt);
 
     const integrations = automation.User?.integrations ?? [];
-    console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
-    const matchingIntegration = integrations.find(i => i.instagramId === accountId);
+    let matchingIntegration = integrations.find((i) => i.instagramId && i.instagramId === accountId);
+console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
+
     console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
 
     let token: string;
