@@ -1,44 +1,48 @@
-// src/app/(protected)/api/webhook/instagram/route.ts
-import { sendDM } from '@/lib/fetch'; // Your Instagram DM function
-import { openai } from '@/lib/openai'; // Your OpenAI client
+import {
+  createChatHistory,
+  getChatHistory,
+  trackResponses,
+} from '@/actions/webhook/queries';
+import { sendDM } from '@/lib/fetch';
+import { openai } from '@/lib/openai';
+import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-console.log("=== Route file loaded ===");
+type AutomationWithIncludes = {
+  id: string;
+  instagramId?: string | null;
+  listener?: {
+    prompt?: string;
+    commentReply?: string | null;
+    listener?: string;
+    id?: string;
+    dmCount?: number;
+    commentCount?: number;
+    automationId?: string;
+  } | null;
+  User?: {
+    subscription?: { plan?: string } | null;
+    integrations?: { token: string; instagramId?: string | null }[];
+  } | null;
+  keywords?: { id?: string; word?: string; automationId?: string | null }[];
+};
 
-// Define plan type
-type SubscriptionPlan = 'FREE' | 'PRO';
-
-// Hardcoded config (replace with your actual values)
-const INSTAGRAM_TOKEN: string = 'your_valid_instagram_token_here'; // From Meta Developer Portal
-const USER_PLAN: SubscriptionPlan = 'PRO'; // Toggle between 'FREE' or 'PRO'
-const KEYWORDS: string[] = ['heyy', 'hi', 'hello']; // Target keywords
-const TEMPLATE_DM: string = 'Thanks for reaching out! How can I help?'; // FREE plan template
-const TEMPLATE_COMMENT: string = 'Great comment! DM us for more!'; // FREE/PRO comment reply
-const AI_PROMPT: string = 'You are a friendly assistant for WebProdigies. Reply in max 100 chars about our business.'; // PRO plan AI prompt
-
-// Simple in-memory chat history (replace with DB if needed)
-const chatHistory: { [key: string]: { role: 'user' | 'assistant'; content: string }[] } = {};
-
-export async function GET(req: NextRequest) {
-  console.log("=== GET request received ===");
-  const hub = req.nextUrl.searchParams.get('hub.challenge');
-  console.log("Hub challenge:", hub);
-  return new NextResponse(hub);
+function generateSmartFallback(accountId: string, prompt: string): string {
+  return `${prompt} fallback for ${accountId}`;
 }
 
 export async function POST(req: NextRequest) {
-  console.log("=== WEBHOOK POST START ===");
-  try {
-    const payload = await req.json();
-    console.log("Payload:", JSON.stringify(payload, null, 2));
+  console.log("=== WEBHOOK POST DEBUG START ===");
 
-    const entry = payload.entry?.[0];
+  try {
+    const webhook_payload = await req.json();
+    console.log("Payload received:", JSON.stringify(webhook_payload, null, 2));
+
+    const entry = webhook_payload.entry?.[0];
     if (!entry) {
-      console.log("❌ No entry");
+      console.log("❌ No entry in payload");
       return NextResponse.json({ message: 'No entry' }, { status: 200 });
     }
-
-    console.log("Entry ID:", entry.id);
 
     const messaging = entry.messaging?.[0];
     if (!messaging?.message?.text || messaging.read || messaging.message.is_echo) {
@@ -55,90 +59,157 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id; // Instagram ID
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Check for keywords
-    const hasKeyword = KEYWORDS.some(k => messageText.toLowerCase().includes(k.toLowerCase()));
-    console.log("🔍 Has keyword:", hasKeyword);
+    // Fetch integration with instagramId from the Integrations table
+    const integration = await client.integrations.findFirst({
+      where: { instagramId: String(accountId) },  // Ensure it's treated as a string
+      select: { userId: true, token: true },
+    });
 
-    // Chat history key
-    const chatKey = `${userId}-${accountId}`;
-    if (!chatHistory[chatKey]) chatHistory[chatKey] = [];
-    const history = chatHistory[chatKey];
-    const isOngoing = history.length > 0;
-    console.log("🔄 Ongoing chat:", isOngoing, "History length:", history.length);
-
-    if (USER_PLAN === 'FREE') {
-      if (hasKeyword && !isOngoing) {
-        // FREE: Send template DM and end chat
-        console.log("📤 FREE DM:", TEMPLATE_DM);
-        const dmResponse = await sendDM(accountId, userId, TEMPLATE_DM, INSTAGRAM_TOKEN);
-        console.log("✅ DM Sent:", JSON.stringify(dmResponse, null, 2));
-
-        // Simulate comment reply (Instagram API for comments not included)
-        console.log("📤 FREE Comment:", TEMPLATE_COMMENT);
-        return NextResponse.json({ message: 'FREE template sent' }, { status: 200 });
-      }
-      console.log("ℹ️ FREE: No action (no keyword or ongoing chat)");
-      return NextResponse.json({ message: 'FREE no action' }, { status: 200 });
-    } else if (USER_PLAN === 'PRO') {
-      if (hasKeyword && !isOngoing) {
-        // PRO: Start AI chat with keyword trigger
-        console.log("🤖 PRO: Starting AI chat");
-        const aiResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo', // Use your preferred model
-          messages: [
-            { role: 'system', content: AI_PROMPT },
-            { role: 'user', content: messageText },
-          ],
-          max_tokens: 40,
-          temperature: 0.1,
-        });
-        let reply = aiResponse.choices?.[0]?.message?.content || 'WebProdigies here!';
-        if (reply.length > 100) reply = reply.substring(0, 97) + "...";
-        console.log("📤 PRO AI DM:", reply);
-
-        const dmResponse = await sendDM(accountId, userId, reply, INSTAGRAM_TOKEN);
-        console.log("✅ DM Sent:", JSON.stringify(dmResponse, null, 2));
-
-        // Update chat history
-        chatHistory[chatKey].push({ role: 'user', content: messageText });
-        chatHistory[chatKey].push({ role: 'assistant', content: reply });
-
-        // Simulate comment reply
-        console.log("📤 PRO Comment:", TEMPLATE_COMMENT);
-        return NextResponse.json({ message: 'PRO AI started' }, { status: 200 });
-      } else if (isOngoing) {
-        // PRO: Continue AI chat
-        console.log("🤖 PRO: Continuing AI chat");
-        const limitedHistory = history.slice(-5);
-        limitedHistory.push({ role: 'user', content: messageText });
-
-        const aiResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: AI_PROMPT },
-            ...limitedHistory,
-          ],
-          max_tokens: 40,
-          temperature: 0.1,
-        });
-        let reply = aiResponse.choices?.[0]?.message?.content || 'WebProdigies here!';
-        if (reply.length > 100) reply = reply.substring(0, 97) + "...";
-        console.log("📤 PRO AI DM:", reply);
-
-        const dmResponse = await sendDM(accountId, userId, reply, INSTAGRAM_TOKEN);
-        console.log("✅ DM Sent:", JSON.stringify(dmResponse, null, 2));
-
-        // Update chat history
-        chatHistory[chatKey].push({ role: 'user', content: messageText });
-        chatHistory[chatKey].push({ role: 'assistant', content: reply });
-        return NextResponse.json({ message: 'PRO AI continued' }, { status: 200 });
-      }
-      console.log("ℹ️ PRO: No action (no keyword, no chat)");
-      return NextResponse.json({ message: 'PRO no action' }, { status: 200 });
+    // If no integration found for the instagramId, return an error
+    if (!integration || !integration.userId) {
+      console.log("❌ No integration for:", accountId);
+      return NextResponse.json({ message: `No integration found for Instagram account: ${accountId}` }, { status: 200 });
     }
 
-    console.log("❌ Unknown plan");
-    return NextResponse.json({ message: 'Unknown plan' }, { status: 200 });
+    // Look for automation, now only filtered by userId (since instagramId is removed from Automation)
+    let automation: AutomationWithIncludes | null = await client.automation.findFirst({
+      where: { userId: integration.userId },
+      include: {
+        listener: true,
+        User: {
+          select: {
+            subscription: { select: { plan: true } },
+            integrations: { select: { token: true, instagramId: true } },
+          },
+        },
+      },
+    });
+
+    // Check chat history with expiry
+    const { history, automationId: historyAutomationId } = await getChatHistory(userId, accountId);
+    const historyExpiryMinutes = 10;
+    const now = new Date();
+    const lastMessage = history.length > 0
+      ? await client.dms.findFirst({
+          where: { senderId: userId, reciever: accountId },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        })
+      : null;
+    const isHistoryExpired = lastMessage
+      ? (now.getTime() - new Date(lastMessage.createdAt).getTime()) / (1000 * 60) > historyExpiryMinutes
+      : true;
+    const isOngoing = history.length > 0 && !isHistoryExpired;
+
+    console.log("🔄 Ongoing:", isOngoing, "History length:", history.length, "History Automation ID:", historyAutomationId);
+    console.log("⏰ Last message time:", lastMessage?.createdAt, "Expired:", isHistoryExpired);
+
+    if (!automation) {
+      console.log("⚠️ No automation for this account, creating...");
+      automation = await client.automation.create({
+        data: {
+          userId: integration.userId,
+          listener: {
+            create: {
+              prompt: `Assistant for WebProdigies_${accountId}`,
+              commentReply: "ok",
+              listener: "SMARTAI",
+            },
+          },
+        },
+        include: {
+          listener: true,
+          User: {
+            select: {
+              subscription: { select: { plan: true } },
+              integrations: { select: { token: true, instagramId: true } },
+            },
+          },
+        },
+      });
+      console.log("✅ Created automation:", automation.id);
+    } else if (historyAutomationId && historyAutomationId !== automation.id && !isHistoryExpired) {
+      console.log("⚠️ History Automation ID mismatch but not expired, sticking with:", automation.id);
+    } else {
+      console.log("🤖 Using existing automation:", automation.id);
+    }
+
+    console.log("🔍 Raw Automation Data:", JSON.stringify(automation, null, 2));
+    const prompt = automation.listener?.prompt || `Assistant for WebProdigies_${accountId}`;
+    console.log("🔍 Automation:", automation.id, "Prompt:", prompt);
+
+    const integrations = automation.User?.integrations ?? [];
+    console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
+    const matchingIntegration = integrations.find((i) => i.instagramId && i.instagramId === accountId);
+    console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
+
+    let token: string;
+    let tokenSource = "automation";
+    const automationToken = matchingIntegration?.token;
+    if (automationToken) {
+      token = automationToken;
+    } else {
+      console.log("⚠️ No token in automation, trying integrations...");
+      const fallbackToken = integrations.length > 0 ? integrations[0].token : null;
+      if (fallbackToken) {
+        token = fallbackToken;
+        tokenSource = "integrations fallback";
+      } else {
+        console.log("⚠️ No token in integrations, using DB token...");
+        token = integration.token;
+        tokenSource = "DB";
+      }
+    }
+    console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
+
+    const plan = automation.User?.subscription?.plan || 'FREE';
+    console.log("🔍 Subscription Plan:", plan);
+
+    if (plan === 'PRO') {
+      console.log("🤖 PRO AI response");
+      const limitedHistory = history.slice(-5);
+      limitedHistory.push({ role: 'user', content: messageText });
+
+      const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
+      console.log("🔧 AI Prompt:", aiPrompt);
+      const smart_ai_message = await openai.chat.completions.create({
+        model: 'google/gemma-3-27b-it:free', 
+        messages: [
+          { role: 'system', content: aiPrompt },
+          ...limitedHistory,
+        ],
+        max_tokens: 40,
+        temperature: 0.1,
+      });
+
+      console.log("🔍 Raw AI Response:", JSON.stringify(smart_ai_message, null, 2));
+      let aiResponse = smart_ai_message?.choices?.[0]?.message?.content;
+      if (!aiResponse || aiResponse.trim() === "") {
+        console.log("⚠️ AI returned empty, using fallback");
+        aiResponse = generateSmartFallback(accountId, prompt);
+      }
+      if (aiResponse.length > 100) {
+        aiResponse = aiResponse.substring(0, 97) + "...";
+      }
+      console.log("📤 AI response:", aiResponse);
+
+      const dmResponse = await sendDM(accountId, userId, aiResponse, token);
+      console.log("✅ Sent DM:", JSON.stringify(dmResponse, null, 2));
+      await createChatHistory(automation.id, userId, accountId, messageText);
+      await createChatHistory(automation.id, accountId, userId, aiResponse);
+      await trackResponses(automation.id, 'DM');
+      console.log("✅ Chat history and tracking updated");
+      return NextResponse.json({ message: 'AI sent' }, { status: 200 });
+    } else {
+      console.log("📤 Free response sent");
+      const messageResponse = `Thanks for reaching out! How can I assist you?`;
+      const dmResponse = await sendDM(accountId, userId, messageResponse, token);
+      console.log("✅ Free Response Sent:", JSON.stringify(dmResponse, null, 2));
+      await createChatHistory(automation.id, userId, accountId, messageText);
+      await createChatHistory(automation.id, accountId, userId, messageResponse);
+      await trackResponses(automation.id, 'DM');
+      return NextResponse.json({ message: 'FREE response sent' }, { status: 200 });
+    }
   } catch (error) {
     console.error("❌ Webhook error:", error);
     return NextResponse.json({ message: 'Webhook error' }, { status: 500 });
