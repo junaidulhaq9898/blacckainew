@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const accountId = entry.id; // Instagram ID
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Fetch integration to get userId
+    // Fetch integration to get userId and token
     const integration = await client.integrations.findFirst({
       where: { instagramId: accountId },
       select: { userId: true, token: true },
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       console.log("❌ No integration for:", accountId);
       return NextResponse.json({ message: 'No integration' }, { status: 200 });
     }
+    console.log("🔍 Integration:", { userId: integration.userId, token: integration.token?.substring(0, 10) + "..." });
 
     // Look for automation tied to this Instagram account
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     // Check chat history with expiry
     const { history, automationId: historyAutomationId } = await getChatHistory(userId, accountId);
-    const historyExpiryMinutes = 10; // Set to 10 minutes
+    const historyExpiryMinutes = 10;
     const now = new Date();
     const lastMessage = history.length > 0
       ? await client.dms.findFirst({
@@ -169,8 +170,8 @@ export async function POST(req: NextRequest) {
 
     const plan = automation.User?.subscription?.plan || 'FREE';
     if (plan === 'PRO') {
+      console.log("🤖 Attempting PRO AI response");
       try {
-        console.log("🤖 PRO AI response");
         const limitedHistory = history.slice(-5);
         limitedHistory.push({ role: 'user', content: messageText });
 
@@ -195,7 +196,7 @@ export async function POST(req: NextRequest) {
         if (aiResponse.length > 100) {
           aiResponse = aiResponse.substring(0, 97) + "...";
         }
-        console.log("📤 AI response:", aiResponse);
+        console.log("📤 Sending AI response:", aiResponse);
         const dmResponse = await sendDM(accountId, userId, aiResponse, token);
         console.log("✅ Sent DM:", JSON.stringify(dmResponse, null, 2));
         await createChatHistory(automation.id, userId, accountId, messageText);
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error("❌ AI error:", error);
         const fallbackResponse = generateSmartFallback(accountId, prompt);
-        console.log("📤 Fallback:", fallbackResponse);
+        console.log("📤 Sending Fallback:", fallbackResponse);
         try {
           const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
           console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
@@ -219,11 +220,12 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
+      console.log("🤖 Attempting FREE response");
       try {
         const messageResponse = isOngoing
           ? `Thanks from ${accountId}! How can I assist?`
           : `Hello from ${accountId}! How can I help?`;
-        console.log("📤 FREE response:", messageResponse);
+        console.log("📤 Sending FREE response:", messageResponse);
         const dmResponse = await sendDM(accountId, userId, messageResponse, token);
         console.log("✅ Sent:", JSON.stringify(dmResponse, null, 2));
         await createChatHistory(automation.id, userId, accountId, messageText);
