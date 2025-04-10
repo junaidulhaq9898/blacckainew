@@ -7,7 +7,7 @@ import {
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM } from '@/lib/fetch';
-import { openai } from '@/lib/openai';
+import { openai } from '@/lib/openai'; // Assuming this is configured for OpenRouter/Poe
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -15,19 +15,19 @@ type AutomationWithIncludes = {
   id: string;
   instagramId?: string | null;
   listener?: {
-    prompt?: string;
+    prompt?: string | null; // Allow null for DB safety
     commentReply?: string | null;
-    listener?: string;
+    listener?: string | null;
     id?: string;
     dmCount?: number;
     commentCount?: number;
     automationId?: string;
   } | null;
   User?: {
-    subscription?: { plan?: string } | null;
-    integrations?: { token: string; instagramId?: string | null }[];
+    subscription?: { plan?: string | null } | null;
+    integrations?: { token: string; instagramId?: string | null }[] | null;
   } | null;
-  keywords?: { id?: string; word?: string; automationId?: string | null }[];
+  keywords?: { id?: string; word?: string; automationId?: string | null }[] | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const entry = webhook_payload.entry?.[0];
     if (!entry) {
-      console.log("❌ No entry");
+      console.log("❌ No entry in payload");
       return NextResponse.json({ message: 'No entry' }, { status: 200 });
     }
 
@@ -55,16 +55,15 @@ export async function POST(req: NextRequest) {
 
     const messaging = entry.messaging?.[0];
     if (!messaging?.message?.text || messaging.read || messaging.message.is_echo) {
-      console.log("Skipping non-text, read, or echo");
+      console.log("Skipping: non-text, read, or echo message");
       return NextResponse.json({ message: 'Skipped' }, { status: 200 });
     }
 
     const messageText = messaging.message.text;
     const userId = messaging.sender.id;
-    const accountId = entry.id; // Instagram ID
+    const accountId = entry.id;
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
-    // Fetch integration to get userId and token
     const integration = await client.integrations.findFirst({
       where: { instagramId: accountId },
       select: { userId: true, token: true },
@@ -75,7 +74,6 @@ export async function POST(req: NextRequest) {
     }
     console.log("🔍 Integration:", { userId: integration.userId, token: integration.token?.substring(0, 10) + "..." });
 
-    // Look for automation tied to this Instagram account
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
       where: { userId: integration.userId, instagramId: accountId },
       include: {
@@ -89,7 +87,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Check chat history with expiry
     const { history, automationId: historyAutomationId } = await getChatHistory(userId, accountId);
     const historyExpiryMinutes = 10;
     const now = new Date();
@@ -109,7 +106,7 @@ export async function POST(req: NextRequest) {
     console.log("⏰ Last message time:", lastMessage?.createdAt, "Expired:", isHistoryExpired);
 
     if (!automation) {
-      console.log("⚠️ No automation for this account, creating...");
+      console.log("⚠️ No automation, creating...");
       automation = await client.automation.create({
         data: {
           userId: integration.userId,
@@ -133,30 +130,25 @@ export async function POST(req: NextRequest) {
         },
       });
       console.log("✅ Created automation:", automation.id);
-    } else if (historyAutomationId && historyAutomationId !== automation.id && !isHistoryExpired) {
-      console.log("⚠️ History Automation ID mismatch but not expired, sticking with:", automation.id);
     } else {
       console.log("🤖 Using existing automation:", automation.id);
     }
 
     console.log("🔍 Raw Automation Data:", JSON.stringify(automation, null, 2));
-    const prompt = automation.listener?.prompt || `Assistant for WebProdigies_${accountId}`;
+    const prompt = automation.listener?.prompt ?? `Assistant for WebProdigies_${accountId}`;
     console.log("🔍 Automation:", automation.id, "Plan:", automation.User?.subscription?.plan);
     console.log("🔍 Prompt from DB:", prompt);
 
     const integrations = automation.User?.integrations ?? [];
     console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
-    const matchingIntegration = integrations.find(i => i.instagramId === accountId);
-    console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
-
+    const matchingIntegration = integrations.find(i => i?.instagramId === accountId);
     let token: string;
     let tokenSource = "automation";
-    const automationToken = matchingIntegration?.token;
-    if (automationToken) {
-      token = automationToken;
+    if (matchingIntegration?.token) {
+      token = matchingIntegration.token;
     } else {
       console.log("⚠️ No token in automation, trying integrations...");
-      const fallbackToken = integrations.length > 0 ? integrations[0].token : null;
+      const fallbackToken = integrations.length > 0 ? integrations[0]?.token : null;
       if (fallbackToken) {
         token = fallbackToken;
         tokenSource = "integrations fallback";
@@ -168,7 +160,8 @@ export async function POST(req: NextRequest) {
     }
     console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
 
-    const plan = automation.User?.subscription?.plan || 'FREE';
+    const plan = automation.User?.subscription?.plan ?? 'FREE';
+    console.log("🔍 Plan selected:", plan);
     if (plan === 'PRO') {
       console.log("🤖 Attempting PRO AI response");
       try {
@@ -178,7 +171,7 @@ export async function POST(req: NextRequest) {
         const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
         console.log("🔧 AI Prompt:", aiPrompt);
         const smart_ai_message = await openai.chat.completions.create({
-          model: 'google/gemma-3-27b-it:free',
+          model: 'google/gemma-3-27b-it:free', // Verify this works with your provider
           messages: [
             { role: 'system', content: aiPrompt },
             ...limitedHistory,
@@ -188,7 +181,7 @@ export async function POST(req: NextRequest) {
         });
 
         console.log("🔍 Raw AI Response:", JSON.stringify(smart_ai_message, null, 2));
-        let aiResponse = smart_ai_message?.choices?.[0]?.message?.content;
+        let aiResponse = smart_ai_message?.choices?.[0]?.message?.content ?? "";
         if (!aiResponse || aiResponse.trim() === "") {
           console.log("⚠️ AI returned empty, using fallback");
           aiResponse = generateSmartFallback(accountId, prompt);
