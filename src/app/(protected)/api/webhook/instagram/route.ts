@@ -1,3 +1,4 @@
+// src/app/(protected)/api/webhook/instagram/route.ts
 import {
   createChatHistory,
   getChatHistory,
@@ -10,31 +11,37 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Updated type to match Prisma's return shape
 type AutomationWithIncludes = {
   id: string;
   listener?: {
-    prompt?: string;
+    prompt: string;
     commentReply?: string | null;
-    listener?: string;
+    listener: 'SMARTAI' | 'MESSAGE';
     id?: string;
     dmCount?: number;
     commentCount?: number;
     automationId?: string;
   } | null;
   User?: {
+    id?: string; // Optional to match getKeywordAutomation
     subscription?: { plan?: string } | null;
-    integrations?: { token: string; instagramId?: string | null }[];
+    integrations?: { token: string; instagramId?: string | null }[] | null;
   } | null;
-  keywords?: { id?: string; word?: string; automationId?: string | null }[];
-};
+  keywords?: { id?: string; word?: string; automationId?: string | null }[] | null;
+  dms?: { id: string; createdAt: Date; automationId: string | null; senderId: string | null; reciever: string | null; message: string | null }[] | null;
+  trigger?: { id: string; type: string; automationId?: string | null }[] | null; // Updated to allow null
+} | null;
 
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
 }
 
-function generateSmartFallback(accountId: string, prompt: string): string {
-  return `${prompt} fallback for ${accountId}`;
+function generateSmartFallback(prompt: string, plan: string): string {
+  return plan === 'PRO'
+    ? `Hello! Per our setup: ${prompt.slice(0, 50)}... How can I assist today?`
+    : `Hi! ${prompt.slice(0, 50)}... How can I help?`;
 }
 
 export async function POST(req: NextRequest) {
@@ -68,160 +75,150 @@ export async function POST(req: NextRequest) {
 
     let automation: AutomationWithIncludes;
     if (isOngoing && automationId) {
-      const result = await getKeywordAutomation(automationId, true);
-      if (!result) {
+      automation = await getKeywordAutomation(automationId, true);
+      if (!automation) {
         console.log("❌ No automation found for ID:", automationId);
         return NextResponse.json({ message: 'No automation' }, { status: 200 });
       }
-      automation = result;
       console.log("🤖 Continuing automation:", automation.id);
     } else {
       const matcher = await matchKeyword(messageText);
       console.log("🔍 Keyword match:", matcher);
       if (matcher?.automationId) {
-        const result = await getKeywordAutomation(matcher.automationId, true);
-        if (!result) {
-          console.log("❌ No automation found for matched ID:", matcher.automationId);
+        automation = await getKeywordAutomation(matcher.automationId, true);
+        if (!automation) {
+          console.log("❌ No automation for matched ID:", matcher.automationId);
           return NextResponse.json({ message: 'No automation' }, { status: 200 });
         }
-        automation = result;
         console.log("🤖 Starting automation:", automation.id);
       } else {
-        console.log("⚠️ No automation, creating...");
-        const integration = await client.integrations.findFirst({
-          where: { instagramId: accountId },
-          select: { userId: true, token: true },
-        });
-        if (!integration || !integration.userId) {
-          console.log("❌ No integration for:", accountId);
-          return NextResponse.json({ message: 'No integration' }, { status: 200 });
-        }
-        automation = await client.automation.create({
-          data: {
-            userId: integration.userId,
-            listener: {
-              create: {
-                prompt: `Assistant for WebProdigies_${accountId}`,
-                commentReply: "ok",
-                listener: "SMARTAI",
-              },
+        console.log("⚠️ No automation, fetching default...");
+        automation = await client.automation.findFirst({
+          where: {
+            User: {
+              integrations: { some: { instagramId: accountId } },
             },
           },
           include: {
             listener: true,
             User: {
               select: {
+                id: true, // Ensure User.id is included here
                 subscription: { select: { plan: true } },
                 integrations: { select: { token: true, instagramId: true } },
               },
             },
           },
         });
-        console.log("✅ Created automation:", automation.id);
+        if (!automation) {
+          console.log("❌ No default automation, creating...");
+          const integration = await client.integrations.findFirst({
+            where: { instagramId: accountId },
+            select: { userId: true, token: true },
+          });
+          if (!integration || !integration.userId) {
+            console.log("❌ No integration for:", accountId);
+            return NextResponse.json({ message: 'No integration' }, { status: 200 });
+          }
+          automation = await client.automation.create({
+            data: {
+              userId: integration.userId,
+              listener: {
+                create: {
+                  prompt: "Hello! I’m your assistant. How can I help?",
+                  listener: "SMARTAI",
+                },
+              },
+            },
+            include: {
+              listener: true,
+              User: {
+                select: {
+                  id: true,
+                  subscription: { select: { plan: true } },
+                  integrations: { select: { token: true, instagramId: true } },
+                },
+              },
+            },
+          });
+          console.log("✅ Created automation:", automation.id);
+        }
       }
     }
 
-    console.log("🔍 Raw Automation Data:", JSON.stringify(automation, null, 2));
-    const prompt = automation.listener?.prompt || `Assistant for WebProdigies_${accountId}`;
-    console.log("🔍 Automation:", automation.id, "Plan:", automation.User?.subscription?.plan);
+    if (!automation!.listener?.prompt) {
+      console.log("⚠️ No prompt found, setting default...");
+      automation!.listener = {
+        prompt: "Hello! I’m your assistant. How can I help?",
+        listener: "SMARTAI",
+      };
+    }
+
+    const prompt = automation!.listener!.prompt;
+    const plan = automation!.User?.subscription?.plan || 'FREE';
+    const businessUserId = automation!.User?.id || 'unknown';
+    console.log("🔍 Automation:", automation!.id, "Plan:", plan, "Business User ID:", businessUserId);
     console.log("🔍 Prompt from DB:", prompt);
 
-    const integrations = automation.User?.integrations ?? [];
-    console.log("🔍 Integrations:", JSON.stringify(integrations, null, 2));
-    const matchingIntegration = integrations.find(i => i.instagramId === accountId);
-    console.log("🔍 Matching Integration:", JSON.stringify(matchingIntegration, null, 2));
-
-    let token: string;
-    let tokenSource = "automation";
-    const automationToken = matchingIntegration?.token;
-    if (automationToken) {
-      token = automationToken;
-    } else {
-      console.log("⚠️ No token in automation, trying integrations...");
-      const fallbackToken = integrations.length > 0 ? integrations[0].token : null;
-      if (fallbackToken) {
-        token = fallbackToken;
-        tokenSource = "integrations fallback";
-      } else {
-        console.log("⚠️ No token in integrations, querying DB...");
-        const integration = await client.integrations.findFirst({
-          where: { instagramId: accountId },
-          select: { token: true, instagramId: true },
-        });
-        console.log("🔍 DB Integration:", JSON.stringify(integration, null, 2));
-        const dbToken = integration?.token;
-        if (!dbToken) {
-          console.log("❌ No valid token for instagramId:", accountId);
-          return NextResponse.json({ message: 'No token' }, { status: 200 });
-        }
-        token = dbToken;
-        tokenSource = "DB";
-      }
+    const token = automation!.User?.integrations?.find(i => i?.instagramId === accountId)?.token
+      || automation!.User?.integrations?.[0]?.token;
+    if (!token) {
+      console.log("❌ No valid token for:", accountId);
+      return NextResponse.json({ message: 'No token' }, { status: 200 });
     }
-    console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
+    console.log("✅ Token:", token.substring(0, 10) + "...");
 
-    const plan = automation.User?.subscription?.plan || 'FREE';
     if (plan === 'PRO') {
       try {
         console.log("🤖 PRO AI response");
         const limitedHistory = history.slice(-5);
         limitedHistory.push({ role: 'user', content: messageText });
 
-        const aiPrompt = `You are: ${prompt}. Answer ONLY about this business. No generic replies. Max 100 chars.`;
+        const aiPrompt = `You are an assistant for user ${businessUserId} with automation ${automation!.id}. Context: ${prompt} Respond ONLY with info from this context. No extra details, pricing, or plans unless specified. Keep it under 100 characters if possible.`;
         console.log("🔧 AI Prompt:", aiPrompt);
+
         const smart_ai_message = await openai.chat.completions.create({
-          model: 'google/gemma-3-27b-it:free', // Try 'gpt-3.5-turbo' if available
+          model: 'google/gemma-3-27b-it:free',
           messages: [
             { role: 'system', content: aiPrompt },
             ...limitedHistory,
           ],
-          max_tokens: 40,
+          max_tokens: 50,
           temperature: 0.1,
         });
 
-        console.log("🔍 Raw AI Response:", JSON.stringify(smart_ai_message, null, 2));
         let aiResponse = smart_ai_message?.choices?.[0]?.message?.content;
         if (!aiResponse || aiResponse.trim() === "") {
-          console.log("⚠️ AI returned empty, using fallback");
-          aiResponse = generateSmartFallback(accountId, prompt);
-        }
-        if (aiResponse.length > 100) {
-          aiResponse = aiResponse.substring(0, 97) + "...";
+          console.log("⚠️ AI empty, using fallback");
+          aiResponse = generateSmartFallback(prompt, plan);
         }
         console.log("📤 AI response:", aiResponse);
         const dmResponse = await sendDM(accountId, userId, aiResponse, token);
         console.log("✅ Sent DM:", JSON.stringify(dmResponse, null, 2));
-        await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, aiResponse);
-        await trackResponses(automation.id, 'DM');
+        await createChatHistory(automation!.id, userId, accountId, messageText);
+        await createChatHistory(automation!.id, accountId, userId, aiResponse);
+        await trackResponses(automation!.id, 'DM');
         return NextResponse.json({ message: 'AI sent' }, { status: 200 });
       } catch (error) {
         console.error("❌ AI error:", error);
-        const fallbackResponse = generateSmartFallback(accountId, prompt);
+        const fallbackResponse = generateSmartFallback(prompt, plan);
         console.log("📤 Fallback:", fallbackResponse);
-        try {
-          const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
-          console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
-          await createChatHistory(automation.id, userId, accountId, messageText);
-          await createChatHistory(automation.id, accountId, userId, fallbackResponse);
-          await trackResponses(automation.id, 'DM');
-          return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
-        } catch (fallbackError) {
-          console.error("❌ Fallback error:", fallbackError);
-          return NextResponse.json({ message: 'Failed to send message' }, { status: 500 });
-        }
+        const dmResponse = await sendDM(accountId, userId, fallbackResponse, token);
+        console.log("✅ Fallback sent:", JSON.stringify(dmResponse, null, 2));
+        await createChatHistory(automation!.id, userId, accountId, messageText);
+        await createChatHistory(automation!.id, accountId, userId, fallbackResponse);
+        await trackResponses(automation!.id, 'DM');
+        return NextResponse.json({ message: 'Fallback sent' }, { status: 200 });
       }
     } else {
       try {
-        const messageResponse = isOngoing
-          ? `Thanks from ${accountId}! How can I assist?`
-          : `Hello from ${accountId}! How can I help?`;
-        console.log("📤 FREE response:", messageResponse);
-        const dmResponse = await sendDM(accountId, userId, messageResponse, token);
+        const freeResponse = generateSmartFallback(prompt, plan);
+        console.log("📤 FREE response:", freeResponse);
+        const dmResponse = await sendDM(accountId, userId, freeResponse, token);
         console.log("✅ Sent:", JSON.stringify(dmResponse, null, 2));
-        await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, messageResponse);
-        await trackResponses(automation.id, 'DM');
+        await createChatHistory(automation!.id, userId, accountId, messageText);
+        await createChatHistory(automation!.id, accountId, userId, freeResponse);
+        await trackResponses(automation!.id, 'DM');
         return NextResponse.json({ message: 'FREE sent' }, { status: 200 });
       } catch (error) {
         console.error("❌ FREE error:", error);

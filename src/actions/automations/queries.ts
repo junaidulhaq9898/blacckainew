@@ -1,3 +1,4 @@
+// src/actions/automations/queries.ts
 'use server'
 
 import { client } from '@/lib/prisma'
@@ -79,20 +80,35 @@ export const addListener = async (
   prompt: string,
   reply?: string
 ) => {
-  return await client.automation.update({
-    where: {
-      id: automationId,
-    },
-    data: {
-      listener: {
-        create: {
-          listener,
-          prompt,
-          commentReply: reply,
+  try {
+    const result = await client.automation.update({
+      where: {
+        id: automationId,
+      },
+      data: {
+        listener: {
+          upsert: {
+            create: {
+              listener,
+              prompt,
+              commentReply: reply,
+            },
+            update: {
+              listener,
+              prompt,
+              commentReply: reply,
+            },
+          },
         },
       },
-    },
-  })
+      include: { listener: true },
+    });
+    console.log('addListener result:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in addListener:', error);
+    throw error;
+  }
 }
 
 export const addTrigger = async (automationId: string, trigger: string[]) => {
