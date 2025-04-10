@@ -1,6 +1,9 @@
+// src/app/(protected)/api/webhook/instagram/route.ts
 import {
   createChatHistory,
   getChatHistory,
+  getKeywordAutomation,
+  matchKeyword,
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM } from '@/lib/fetch';
@@ -8,7 +11,6 @@ import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Log test to confirm logging works
 console.log("=== Route file loaded ===");
 
 type AutomationWithIncludes = {
@@ -42,7 +44,7 @@ function generateSmartFallback(accountId: string, prompt: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  console.log("=== WEBHOOK POST DEBUG START ==="); // First log
+  console.log("=== WEBHOOK POST DEBUG START ===");
   try {
     const webhook_payload = await req.json();
     console.log("Payload received:", JSON.stringify(webhook_payload, null, 2));
@@ -71,17 +73,26 @@ export async function POST(req: NextRequest) {
     console.log("📝 Message:", messageText, "User:", userId, "Account:", accountId);
 
     // Fetch integration
-    const integration = await client.integrations.findFirst({
-      where: { instagramId: String(accountId) },  // Ensure it's treated as a string
+    let integration = await client.integrations.findFirst({
+      where: { instagramId: accountId },
       select: { userId: true, token: true },
     });
-    console.log("🔍 Integration:", JSON.stringify(integration, null, 2));
+    console.log("🔍 Integration from DB:", JSON.stringify(integration, null, 2));
+
+    // Fallback if no integration
+    const FALLBACK_USER_ID = 'your_user_id_here'; // Replace with your User.id
+    const FALLBACK_TOKEN = 'your_valid_instagram_token_here'; // Replace with your token
     if (!integration || !integration.userId) {
       console.log("❌ No integration for:", accountId);
-      return NextResponse.json({ message: 'No integration' }, { status: 200 });
+      console.log("ℹ️ Using fallback integration");
+      integration = {
+        userId: FALLBACK_USER_ID,
+        token: FALLBACK_TOKEN,
+      };
+      console.log("🔍 Fallback Integration:", JSON.stringify(integration, null, 2));
     }
 
-    // Look for automation
+    // Look for or create automation
     let automation: AutomationWithIncludes | null = await client.automation.findFirst({
       where: { userId: integration.userId, instagramId: accountId },
       include: {
@@ -166,9 +177,9 @@ export async function POST(req: NextRequest) {
         token = fallbackToken;
         tokenSource = "integrations fallback";
       } else {
-        console.log("⚠️ No token in integrations, using DB token...");
+        console.log("⚠️ No token in integrations, using DB/fallback token...");
         token = integration.token;
-        tokenSource = "DB";
+        tokenSource = "DB/fallback";
       }
     }
     console.log(`✅ Using token from ${tokenSource}:`, token.substring(0, 10) + "...");
@@ -185,7 +196,7 @@ export async function POST(req: NextRequest) {
       const aiPrompt = `You are: ${prompt}. Reply ONLY about this business. No generic talk. Max 100 chars.`;
       console.log("🔧 AI Prompt:", aiPrompt);
       const smart_ai_message = await openai.chat.completions.create({
-        model: 'google/gemma-3-27b-it:free', // Switch to 'gpt-3.5-turbo' if needed
+        model: 'google/gemma-3-27b-it:free', // Switch to 'gpt-3.5-turbo' if you have an OpenAI key
         messages: [
           { role: 'system', content: aiPrompt },
           ...limitedHistory,
