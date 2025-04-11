@@ -21,8 +21,6 @@ export async function GET(req: NextRequest) {
   return new NextResponse(hub);
 }
 
-const STATIC_MESSAGE = "Hello! Welcome to Delight Brush Industries. We specialize in high-quality paint brushes. How can we assist you today?";
-
 export async function POST(req: NextRequest) {
   try {
     const webhook_payload = await req.json();
@@ -86,15 +84,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?"; // Fallback if no prompt
       try {
-        console.log("📤 Sending static DM:", STATIC_MESSAGE);
-        const dmResponse = await sendDM(entry.id, commenterId, STATIC_MESSAGE, token);
+        console.log("📤 Sending DM with prompt:", prompt);
+        const dmResponse = await sendDM(entry.id, commenterId, prompt, token);
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, commenterId, entry.id, commentText);
-        await createChatHistory(automation.id, entry.id, commenterId, STATIC_MESSAGE);
+        await createChatHistory(automation.id, entry.id, commenterId, prompt);
         await trackResponses(automation.id, 'DM');
       } catch (error) {
-        console.error("❌ Error sending static DM:", error);
+        console.error("❌ Error sending DM:", error);
       }
 
       console.log("✅ Comment processing completed");
@@ -169,6 +168,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Listener prompt from DB:", automation.listener?.prompt);
 
       const token = automation.User?.integrations.find((i: Integration) => i.instagramId === accountId)?.token || automation.User?.integrations[0]?.token;
       if (!token) {
@@ -176,16 +176,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
+      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?"; // Use DB prompt or fallback
       try {
-        console.log("📤 Sending static DM:", STATIC_MESSAGE);
-        const direct_message = await sendDM(accountId, userId, STATIC_MESSAGE, token);
+        console.log("📤 Sending DM with prompt:", prompt);
+        const direct_message = await sendDM(accountId, userId, prompt, token);
         console.log("✅ DM sent successfully:", direct_message);
         await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, STATIC_MESSAGE);
+        await createChatHistory(automation.id, accountId, userId, prompt);
         await trackResponses(automation.id, 'DM');
-        return NextResponse.json({ message: 'Static message sent' }, { status: 200 });
+        return NextResponse.json({ message: 'Prompt message sent' }, { status: 200 });
       } catch (error) {
-        console.error("❌ Error sending static DM:", error);
+        console.error("❌ Error sending DM:", error);
         return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
       }
     }
