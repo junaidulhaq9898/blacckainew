@@ -8,7 +8,7 @@ import {
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM, sendCommentReply } from '@/lib/fetch';
-import { openai } from '@/lib/openai'; // Add OpenAI import for PRO AI responses
+import { openai } from '@/lib/openai'; // Assuming this is your OpenRouter setup
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -21,8 +21,6 @@ export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
 }
-
-const FALLBACK_MESSAGE = "Hello! Welcome to Delight Brush Industries. How can we assist you today?"; // Fallback if no prompt
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +36,6 @@ export async function POST(req: NextRequest) {
 
     console.log("Entry ID:", entry.id);
 
-    // Handle Comments
     if (entry.changes && entry.changes[0].field === 'comments') {
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
@@ -88,13 +85,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const prompt = automation.listener?.prompt || FALLBACK_MESSAGE;
+      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?";
       try {
-        console.log("📤 Sending DM with prompt:", prompt);
-        const dmResponse = await sendDM(entry.id, commenterId, prompt, token);
+        // Use a simple response for comments instead of full prompt
+        const dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
+        console.log("📤 Sending DM:", dmResponseText);
+        const dmResponse = await sendDM(entry.id, commenterId, dmResponseText, token);
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, commenterId, entry.id, commentText);
-        await createChatHistory(automation.id, entry.id, commenterId, prompt);
+        await createChatHistory(automation.id, entry.id, commenterId, dmResponseText);
         await trackResponses(automation.id, 'DM');
       } catch (error) {
         console.error("❌ Error sending DM:", error);
@@ -104,7 +103,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
     }
 
-    // Handle Messages
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
 
@@ -173,6 +171,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
+      console.log("🔍 Listener prompt from DB:", automation.listener?.prompt);
 
       const token = automation.User?.integrations.find((i: Integration) => i.instagramId === accountId)?.token || automation.User?.integrations[0]?.token;
       if (!token) {
@@ -180,39 +179,44 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      const plan = automation.User?.subscription?.plan || 'FREE';
-      const prompt = automation.listener?.prompt || FALLBACK_MESSAGE;
-
-      try {
-        let reply: string;
-        if (plan === 'PRO') {
-          console.log("🤖 PRO: Generating AI response with prompt:", prompt);
+      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?";
+      let dmResponseText;
+      if (automation.User?.subscription?.plan === 'PRO') {
+        try {
+          console.log("🤖 Generating PRO AI response");
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
           const aiResponse = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo', // Adjust model as needed
+            model: 'google/gemma-3-27b-it:free', // Adjust based on your OpenRouter setup
             messages: [
-              { role: 'system', content: prompt },
+              { role: 'system', content: `${prompt}\n\nRespond to the user in under 200 characters, following the tone and objectives outlined.` },
               ...limitedHistory,
             ],
-            max_tokens: 40,
-            temperature: 0.1,
+            max_tokens: 50,
+            temperature: 0.7,
           });
-          reply = aiResponse.choices?.[0]?.message?.content || prompt;
-          if (reply.length > 100) reply = reply.substring(0, 97) + "...";
-          console.log("📤 PRO AI DM:", reply);
-        } else {
-          console.log("📤 FREE: Sending template DM:", prompt);
-          reply = prompt; // Use prompt as template for FREE
-        }
 
-        const dmResponse = await sendDM(accountId, userId, reply, token);
-        console.log("✅ DM sent successfully:", dmResponse);
+          dmResponseText = aiResponse.choices[0]?.message?.content?.trim() || "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
+          if (dmResponseText.length > 200) {
+            dmResponseText = dmResponseText.substring(0, 197) + "...";
+          }
+        } catch (aiError) {
+          console.error("❌ AI generation error:", aiError);
+          dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
+        }
+      } else {
+        dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
+      }
+
+      try {
+        console.log("📤 Sending DM:", dmResponseText);
+        const direct_message = await sendDM(accountId, userId, dmResponseText, token);
+        console.log("✅ DM sent successfully:", direct_message);
         await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, reply);
+        await createChatHistory(automation.id, accountId, userId, dmResponseText);
         await trackResponses(automation.id, 'DM');
-        return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
+        return NextResponse.json({ message: 'Prompt message sent' }, { status: 200 });
       } catch (error) {
         console.error("❌ Error sending DM:", error);
         return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
