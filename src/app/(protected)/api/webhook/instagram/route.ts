@@ -8,7 +8,7 @@ import {
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM, sendCommentReply } from '@/lib/fetch';
-import { openai } from '@/lib/openai'; // Assuming this is your OpenRouter setup
+import { openai } from '@/lib/openai';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
 }
+
+const FALLBACK_MESSAGE = "Hello! Welcome to Delight Brush Industries. How can we assist you today?";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
 
     console.log("Entry ID:", entry.id);
 
+    // Handle Comments
     if (entry.changes && entry.changes[0].field === 'comments') {
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
@@ -74,26 +77,58 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      if (automation.listener?.commentReply) {
-        try {
-          console.log("📤 Sending comment reply:", automation.listener.commentReply);
-          const replyResponse = await sendCommentReply(commentId, automation.listener.commentReply, token);
-          console.log("✅ Comment reply sent successfully:", replyResponse);
-          await trackResponses(automation.id, 'COMMENT');
-        } catch (error: unknown) {
-          console.error("❌ Error sending comment reply:", error);
-        }
+      const plan = automation.User?.subscription?.plan || 'FREE';
+      const prompt = automation.listener?.prompt || FALLBACK_MESSAGE;
+
+      // Comment Reply
+      let commentReply = automation.listener?.commentReply || 'Thanks for commenting!';
+      if (plan === 'PRO' && prompt) {
+        console.log("🤖 PRO: Generating AI comment reply with prompt:", prompt);
+        const aiResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: `${prompt}\n\nGenerate a concise comment reply (max 100 chars) to: "${commentText}"` },
+            { role: 'user', content: commentText },
+          ],
+          max_tokens: 20,
+          temperature: 0.1,
+        });
+        commentReply = aiResponse.choices?.[0]?.message?.content || commentReply;
+        if (commentReply.length > 100) commentReply = commentReply.substring(0, 97) + "...";
       }
 
-      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?";
       try {
-        // Use a simple response for comments instead of full prompt
-        const dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
-        console.log("📤 Sending DM:", dmResponseText);
-        const dmResponse = await sendDM(entry.id, commenterId, dmResponseText, token);
+        console.log("📤 Sending comment reply:", commentReply);
+        const replyResponse = await sendCommentReply(commentId, commentReply, token);
+        console.log("✅ Comment reply sent successfully:", replyResponse);
+        await trackResponses(automation.id, 'COMMENT');
+      } catch (error) {
+        console.error("❌ Error sending comment reply:", error);
+      }
+
+      // DM with Intro Message
+      let dmMessage = prompt;
+      if (plan === 'PRO' && prompt) {
+        console.log("🤖 PRO: Generating AI DM intro with prompt:", prompt);
+        const aiResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 200 chars) responding to the comment: "${commentText}"` },
+            { role: 'user', content: commentText },
+          ],
+          max_tokens: 40,
+          temperature: 0.1,
+        });
+        dmMessage = aiResponse.choices?.[0]?.message?.content || FALLBACK_MESSAGE;
+        if (dmMessage.length > 200) dmMessage = dmMessage.substring(0, 197) + "...";
+      }
+
+      try {
+        console.log("📤 Sending DM with intro:", dmMessage);
+        const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, commenterId, entry.id, commentText);
-        await createChatHistory(automation.id, entry.id, commenterId, dmResponseText);
+        await createChatHistory(automation.id, entry.id, commenterId, dmMessage);
         await trackResponses(automation.id, 'DM');
       } catch (error) {
         console.error("❌ Error sending DM:", error);
@@ -103,6 +138,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
     }
 
+    // Handle Messages (unchanged for brevity, but can adapt similarly)
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
 
@@ -171,7 +207,6 @@ export async function POST(req: NextRequest) {
       }
 
       console.log("🔍 Automation plan:", automation.User?.subscription?.plan);
-      console.log("🔍 Listener prompt from DB:", automation.listener?.prompt);
 
       const token = automation.User?.integrations.find((i: Integration) => i.instagramId === accountId)?.token || automation.User?.integrations[0]?.token;
       if (!token) {
@@ -179,44 +214,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      const prompt = automation.listener?.prompt ?? "Hello! How can I assist you today?";
-      let dmResponseText;
-      if (automation.User?.subscription?.plan === 'PRO') {
-        try {
-          console.log("🤖 Generating PRO AI response");
-          const limitedHistory = history.slice(-5);
-          limitedHistory.push({ role: 'user', content: messageText });
+      const plan = automation.User?.subscription?.plan || 'FREE';
+      const prompt = automation.listener?.prompt || FALLBACK_MESSAGE;
 
-          const aiResponse = await openai.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free', // Adjust based on your OpenRouter setup
-            messages: [
-              { role: 'system', content: `${prompt}\n\nRespond to the user in under 200 characters, following the tone and objectives outlined.` },
-              ...limitedHistory,
-            ],
-            max_tokens: 50,
-            temperature: 0.7,
-          });
+      let reply: string;
+      if (plan === 'PRO') {
+        console.log("🤖 PRO: Generating AI response with prompt:", prompt);
+        const limitedHistory = history.slice(-5);
+        limitedHistory.push({ role: 'user', content: messageText });
 
-          dmResponseText = aiResponse.choices[0]?.message?.content?.trim() || "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
-          if (dmResponseText.length > 200) {
-            dmResponseText = dmResponseText.substring(0, 197) + "...";
-          }
-        } catch (aiError) {
-          console.error("❌ AI generation error:", aiError);
-          dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
-        }
+        const aiResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: prompt },
+            ...limitedHistory,
+          ],
+          max_tokens: 40,
+          temperature: 0.1,
+        });
+        reply = aiResponse.choices?.[0]?.message?.content || prompt;
+        if (reply.length > 100) reply = reply.substring(0, 97) + "...";
       } else {
-        dmResponseText = "Hello! Welcome to UrbanCraft Interiors. How can I assist you today?";
+        console.log("📤 FREE: Sending template DM:", prompt);
+        reply = prompt;
       }
 
       try {
-        console.log("📤 Sending DM:", dmResponseText);
-        const direct_message = await sendDM(accountId, userId, dmResponseText, token);
-        console.log("✅ DM sent successfully:", direct_message);
+        console.log("📤 Sending DM:", reply);
+        const dmResponse = await sendDM(accountId, userId, reply, token);
+        console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, dmResponseText);
+        await createChatHistory(automation.id, accountId, userId, reply);
         await trackResponses(automation.id, 'DM');
-        return NextResponse.json({ message: 'Prompt message sent' }, { status: 200 });
+        return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
       } catch (error) {
         console.error("❌ Error sending DM:", error);
         return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
