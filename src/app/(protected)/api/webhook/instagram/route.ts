@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
       const plan = automation.User?.subscription?.plan || 'FREE';
       const prompt = automation.listener.prompt;
 
-      // Comment Reply - Use user-set value for both plans
-      let commentReply = automation.listener.commentReply || 'Thanks for commenting!';
+      // Comment Reply - Always use user-set value
+      const commentReply = automation.listener.commentReply || 'Thanks for commenting!';
       try {
         console.log("📤 Sending comment reply:", commentReply);
         const replyResponse = await sendCommentReply(commentId, commentReply, token);
@@ -103,17 +103,22 @@ export async function POST(req: NextRequest) {
       let dmMessage = prompt;
       if (plan === 'PRO') {
         console.log("🤖 PRO: Generating AI DM intro");
-        const aiResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 500 chars) responding to the comment: "${commentText}"` },
-            { role: 'user', content: commentText },
-          ],
-          max_tokens: 100,
-          temperature: 0.1,
-        });
-        dmMessage = aiResponse.choices?.[0]?.message?.content || prompt;
-        if (dmMessage.length > 500) dmMessage = dmMessage.substring(0, 497) + "...";
+        try {
+          const aiResponse = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 500 chars) responding to the comment: "${commentText}"` },
+              { role: 'user', content: commentText },
+            ],
+            max_tokens: 100,
+            temperature: 0.1,
+          });
+          dmMessage = aiResponse.choices?.[0]?.message?.content || prompt;
+          if (dmMessage.length > 500) dmMessage = dmMessage.substring(0, 497) + "...";
+        } catch (aiError) {
+          console.error("❌ AI DM generation failed:", aiError);
+          dmMessage = prompt; // Fallback to prompt
+        }
       }
 
       try {
@@ -213,20 +218,25 @@ export async function POST(req: NextRequest) {
       let reply = prompt;
       if (plan === 'PRO') {
         console.log("🤖 PRO: Generating AI response");
-        const limitedHistory = history.slice(-5);
-        limitedHistory.push({ role: 'user', content: messageText });
+        try {
+          const limitedHistory = history.slice(-5);
+          limitedHistory.push({ role: 'user', content: messageText });
 
-        const aiResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: prompt },
-            ...limitedHistory,
-          ],
-          max_tokens: 200, // Increased for full message
-          temperature: 0.1,
-        });
-        reply = aiResponse.choices?.[0]?.message?.content || prompt;
-        if (reply.length > 500) reply = reply.substring(0, 497) + "..."; // Roomier limit
+          const aiResponse = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: prompt },
+              ...limitedHistory,
+            ],
+            max_tokens: 200,
+            temperature: 0.1,
+          });
+          reply = aiResponse.choices?.[0]?.message?.content || prompt;
+          if (reply.length > 500) reply = reply.substring(0, 497) + "...";
+        } catch (aiError) {
+          console.error("❌ AI response generation failed:", aiError);
+          reply = prompt;
+        }
       }
 
       try {
