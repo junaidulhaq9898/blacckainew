@@ -8,9 +8,10 @@ import {
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM, sendCommentReply } from '@/lib/fetch';
-import { openai } from '@/lib/openai';
+import { openRouter } from '@/lib/openrouter';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
 // Store processed comment IDs to prevent duplicates
 const processedComments = new Set<string>();
@@ -23,6 +24,23 @@ interface Integration {
 export async function GET(req: NextRequest) {
   const hub = req.nextUrl.searchParams.get('hub.challenge');
   return new NextResponse(hub);
+}
+
+async function validateToken(token: string): Promise<boolean> {
+  try {
+    const response = await axios.get('https://graph.instagram.com/me', {
+      params: { fields: 'id,username', access_token: token },
+    });
+    console.log("Token validated:", response.data);
+    return true;
+  } catch (error: any) {
+    console.error("Token validation failed:", {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+    return false;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -84,16 +102,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
+      // Validate token
+      const isTokenValid = await validateToken(token);
+      if (!isTokenValid) {
+        console.log("❌ Invalid token, skipping comment reply and DM");
+        return NextResponse.json({ message: 'Invalid token' }, { status: 200 });
+      }
+
       const plan = automation.User?.subscription?.plan || 'FREE';
       const prompt = automation.listener.prompt;
       const commentReply = automation.listener.commentReply;
 
-      // Comment Reply
+      // Comment Reply (same for PRO and FREE)
       try {
         console.log("📤 Sending comment reply:", commentReply);
         const replyResponse = await sendCommentReply(commentId, commentReply, token);
         console.log("✅ Comment reply sent successfully:", replyResponse);
-        await trackResponses(automation.id, 'COMMENT', commentId); // Line ~96: Fixed
+        await trackResponses(automation.id, 'COMMENT', commentId);
         processedComments.add(commentId);
       } catch (error: any) {
         console.error("❌ Error sending comment reply:", {
@@ -107,10 +132,10 @@ export async function POST(req: NextRequest) {
       // DM Intro
       let dmMessage = prompt;
       if (plan === 'PRO') {
-        console.log("🤖 PRO: Generating AI DM intro");
+        console.log("🤖 PRO: Generating OpenRouter AI DM");
         try {
-          const aiResponse = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+          const aiResponse = await openRouter.chat.completions.create({
+            model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
             messages: [
               { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 500 chars) responding to the comment: "${commentText}"` },
               { role: 'user', content: commentText },
@@ -119,7 +144,10 @@ export async function POST(req: NextRequest) {
             temperature: 0.1,
           });
           dmMessage = aiResponse.choices?.[0]?.message?.content || prompt;
-          if (dmMessage.length > 500) dmMessage = dmMessage.substring(0, 497) + "...";
+          if (dmMessage.length > 500) {
+            console.warn(`⚠️ AI response too long (${dmMessage.length} chars), truncating to 500 chars`);
+            dmMessage = dmMessage.substring(0, 497) + "...";
+          }
         } catch (aiError: any) {
           console.error("❌ AI DM generation failed:", {
             message: aiError.message,
@@ -130,10 +158,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Truncate to Instagram's 2000-char limit
-      if (dmMessage.length > 2000) {
-        console.warn("⚠️ DM message too long, truncating to 2000 chars");
-        dmMessage = dmMessage.substring(0, 1997) + "...";
+      // Truncate to Instagram's 1000-char limit
+      if (dmMessage.length > 1000) {
+        console.warn(`⚠️ DM message too long (${dmMessage.length} chars), truncating to 1000 chars`);
+        dmMessage = dmMessage.substring(0, 997) + "...";
       }
 
       try {
@@ -142,7 +170,7 @@ export async function POST(req: NextRequest) {
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, commenterId, entry.id, commentText);
         await createChatHistory(automation.id, entry.id, commenterId, dmMessage);
-        await trackResponses(automation.id, 'DM', commentId); // Line ~130: Fixed
+        await trackResponses(automation.id, 'DM', commentId);
       } catch (error: any) {
         console.error("❌ Error sending DM:", {
           message: error.message,
@@ -236,13 +264,13 @@ export async function POST(req: NextRequest) {
 
       let reply = prompt;
       if (plan === 'PRO') {
-        console.log("🤖 PRO: Generating AI response");
+        console.log("🤖 PRO: Generating OpenRouter AI response");
         try {
           const limitedHistory = history.slice(-5);
           limitedHistory.push({ role: 'user', content: messageText });
 
-          const aiResponse = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+          const aiResponse = await openRouter.chat.completions.create({
+            model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
             messages: [
               { role: 'system', content: prompt },
               ...limitedHistory,
@@ -251,7 +279,10 @@ export async function POST(req: NextRequest) {
             temperature: 0.1,
           });
           reply = aiResponse.choices?.[0]?.message?.content || prompt;
-          if (reply.length > 500) reply = reply.substring(0, 497) + "...";
+          if (reply.length > 500) {
+            console.warn(`⚠️ AI response too long (${reply.length} chars), truncating to 500 chars`);
+            reply = reply.substring(0, 497) + "...";
+          }
         } catch (aiError: any) {
           console.error("❌ AI response generation failed:", {
             message: aiError.message,
@@ -262,10 +293,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Truncate to Instagram's 2000-char limit
-      if (reply.length > 2000) {
-        console.warn("⚠️ DM reply too long, truncating to 2000 chars");
-        reply = reply.substring(0, 1997) + "...";
+      // Truncate to Instagram's 1000-char limit
+      if (reply.length > 1000) {
+        console.warn(`⚠️ DM reply too long (${reply.length} chars), truncating to 1000 chars`);
+        reply = reply.substring(0, 997) + "...";
       }
 
       try {
@@ -274,7 +305,7 @@ export async function POST(req: NextRequest) {
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, userId, accountId, messageText);
         await createChatHistory(automation.id, accountId, userId, reply);
-        await trackResponses(automation.id, 'DM'); // Line ~248: Unchanged
+        await trackResponses(automation.id, 'DM');
       } catch (error: any) {
         console.error("❌ Error sending DM:", {
           message: error.message,
