@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
             const aiResponse = await openRouter.chat.completions.create({
               model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
               messages: [
-                { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"` },
+                { role: 'system', content: `Generate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"` },
                 { role: 'user', content: commentText },
               ],
               max_tokens: 60,
@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
           const aiResponse = await openRouter.chat.completions.create({
             model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
             messages: [
-              { role: 'system', content: `${prompt}\n\nGenerate a friendly response (max 300 chars)` },
+              { role: 'system', content: `Generate a friendly response (max 300 chars) to the message: "${messageText}"` },
               ...limitedHistory,
             ],
             max_tokens: 60,
