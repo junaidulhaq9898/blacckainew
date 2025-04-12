@@ -8,7 +8,6 @@ import {
   trackResponses,
 } from '@/actions/webhook/queries';
 import { sendDM, sendCommentReply } from '@/lib/fetch';
-import { openRouter } from '@/lib/openrouter';
 import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
@@ -140,39 +139,17 @@ export async function POST(req: NextRequest) {
       if (!isReplyComment) {
         let dmMessage = prompt;
         if (plan === 'PRO') {
-          console.log("PRO: Generating OpenRouter AI DM");
-          try {
-            const aiResponse = await openRouter.chat.completions.create({
-              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
-              messages: [
-                { role: 'system', content: `Generate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"` },
-                { role: 'user', content: commentText },
-              ],
-              max_tokens: 60,
-              temperature: 0.1,
-            });
-            console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
-            if (aiResponse.choices?.[0]?.message?.content) {
-              dmMessage = aiResponse.choices[0].message.content;
-              if (dmMessage.length > 300) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 300 chars`);
-                dmMessage = dmMessage.substring(0, 297) + "...";
-              }
-            } else {
-              console.warn("No valid AI response, using prompt");
-              dmMessage = prompt;
-            }
-          } catch (aiError: any) {
-            console.error("AI DM generation failed:", {
-              message: aiError.message,
-              status: aiError.response?.status,
-              data: aiError.response?.data,
-            });
-            dmMessage = prompt;
+          console.log("PRO: Checking keyword for DM");
+          const matcher = await matchKeyword(commentText);
+          console.log("Keyword match result:", matcher);
+          if (matcher?.automationId) {
+            const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+            dmMessage = keywordAutomation?.listener?.prompt || prompt;
+            console.log("Using keyword prompt:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
           }
         }
 
-        // Truncate to 300 chars for consistency
+        // Truncate to 300 chars
         if (dmMessage.length > 300) {
           console.warn(`DM message too long (${dmMessage.length} chars), truncating to 300 chars`);
           dmMessage = dmMessage.substring(0, 297) + "...";
@@ -279,42 +256,17 @@ export async function POST(req: NextRequest) {
 
       let reply = prompt;
       if (plan === 'PRO') {
-        console.log("PRO: Generating OpenRouter AI response");
-        try {
-          const limitedHistory = history.slice(-5);
-          limitedHistory.push({ role: 'user', content: messageText });
-
-          const aiResponse = await openRouter.chat.completions.create({
-            model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
-            messages: [
-              { role: 'system', content: `Generate a friendly response (max 300 chars) to the message: "${messageText}"` },
-              ...limitedHistory,
-            ],
-            max_tokens: 60,
-            temperature: 0.1,
-          });
-          console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
-          if (aiResponse.choices?.[0]?.message?.content) {
-            reply = aiResponse.choices[0].message.content;
-            if (reply.length > 300) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 300 chars`);
-              reply = reply.substring(0, 297) + "...";
-            }
-          } else {
-            console.warn("No valid AI response, using prompt");
-            reply = prompt;
-          }
-        } catch (aiError: any) {
-          console.error("AI response generation failed:", {
-            message: aiError.message,
-            status: aiError.response?.status,
-            data: aiError.response?.data,
-          });
-          reply = prompt;
+        console.log("PRO: Checking keyword for DM");
+        const matcher = await matchKeyword(messageText);
+        console.log("Keyword match result:", matcher);
+        if (matcher?.automationId) {
+          const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+          reply = keywordAutomation?.listener?.prompt || prompt;
+          console.log("Using keyword prompt:", reply.substring(0, 50) + (reply.length > 50 ? '...' : ''));
         }
       }
 
-      // Truncate to 300 chars for consistency
+      // Truncate to 300 chars
       if (reply.length > 300) {
         console.warn(`DM reply too long (${reply.length} chars), truncating to 300 chars`);
         reply = reply.substring(0, 297) + "...";
