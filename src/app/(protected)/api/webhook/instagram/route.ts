@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      if (!automation || !automation.listener?.prompt) {
-        console.log("❌ No automation or prompt found for post ID:", postId);
-        return NextResponse.json({ message: 'No automation or prompt found' }, { status: 200 });
+      if (!automation || !automation.listener?.prompt || !automation.listener?.commentReply) {
+        console.log("❌ No automation, prompt, or commentReply found for post ID:", postId);
+        return NextResponse.json({ message: 'No automation or listener data found' }, { status: 200 });
       }
 
       console.log("🔍 Automation found:", automation.id, "Plan:", automation.User?.subscription?.plan);
@@ -86,17 +86,22 @@ export async function POST(req: NextRequest) {
 
       const plan = automation.User?.subscription?.plan || 'FREE';
       const prompt = automation.listener.prompt;
+      const commentReply = automation.listener.commentReply;
 
-      // Comment Reply - Always use user-set value
-      const commentReply = automation.listener.commentReply || 'Thanks for commenting!';
+      // Comment Reply
       try {
         console.log("📤 Sending comment reply:", commentReply);
         const replyResponse = await sendCommentReply(commentId, commentReply, token);
         console.log("✅ Comment reply sent successfully:", replyResponse);
-        await trackResponses(automation.id, 'COMMENT');
-        processedComments.add(commentId); // Mark as processed
-      } catch (error) {
-        console.error("❌ Error sending comment reply:", error);
+        await trackResponses(automation.id, 'COMMENT', commentId); // Line ~96: Fixed
+        processedComments.add(commentId);
+      } catch (error: any) {
+        console.error("❌ Error sending comment reply:", {
+          commentId,
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
       }
 
       // DM Intro
@@ -115,10 +120,20 @@ export async function POST(req: NextRequest) {
           });
           dmMessage = aiResponse.choices?.[0]?.message?.content || prompt;
           if (dmMessage.length > 500) dmMessage = dmMessage.substring(0, 497) + "...";
-        } catch (aiError) {
-          console.error("❌ AI DM generation failed:", aiError);
-          dmMessage = prompt; // Fallback to prompt
+        } catch (aiError: any) {
+          console.error("❌ AI DM generation failed:", {
+            message: aiError.message,
+            status: aiError.response?.status,
+            data: aiError.response?.data,
+          });
+          dmMessage = prompt;
         }
+      }
+
+      // Truncate to Instagram's 2000-char limit
+      if (dmMessage.length > 2000) {
+        console.warn("⚠️ DM message too long, truncating to 2000 chars");
+        dmMessage = dmMessage.substring(0, 1997) + "...";
       }
 
       try {
@@ -127,9 +142,13 @@ export async function POST(req: NextRequest) {
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, commenterId, entry.id, commentText);
         await createChatHistory(automation.id, entry.id, commenterId, dmMessage);
-        await trackResponses(automation.id, 'DM');
-      } catch (error) {
-        console.error("❌ Error sending DM:", error);
+        await trackResponses(automation.id, 'DM', commentId); // Line ~130: Fixed
+      } catch (error: any) {
+        console.error("❌ Error sending DM:", {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
       }
 
       console.log("✅ Comment processing completed");
@@ -233,10 +252,20 @@ export async function POST(req: NextRequest) {
           });
           reply = aiResponse.choices?.[0]?.message?.content || prompt;
           if (reply.length > 500) reply = reply.substring(0, 497) + "...";
-        } catch (aiError) {
-          console.error("❌ AI response generation failed:", aiError);
+        } catch (aiError: any) {
+          console.error("❌ AI response generation failed:", {
+            message: aiError.message,
+            status: aiError.response?.status,
+            data: aiError.response?.data,
+          });
           reply = prompt;
         }
+      }
+
+      // Truncate to Instagram's 2000-char limit
+      if (reply.length > 2000) {
+        console.warn("⚠️ DM reply too long, truncating to 2000 chars");
+        reply = reply.substring(0, 1997) + "...";
       }
 
       try {
@@ -245,18 +274,26 @@ export async function POST(req: NextRequest) {
         console.log("✅ DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, userId, accountId, messageText);
         await createChatHistory(automation.id, accountId, userId, reply);
-        await trackResponses(automation.id, 'DM');
-        return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
-      } catch (error) {
-        console.error("❌ Error sending DM:", error);
-        return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
+        await trackResponses(automation.id, 'DM'); // Line ~248: Unchanged
+      } catch (error: any) {
+        console.error("❌ Error sending DM:", {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
       }
+
+      console.log("✅ Message processing completed");
+      return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
     }
 
     console.log("=== WEBHOOK DEBUG END ===");
     return NextResponse.json({ message: 'No automation set' }, { status: 200 });
-  } catch (error) {
-    console.error("❌ Webhook Error:", error);
+  } catch (error: any) {
+    console.error("❌ Webhook Error:", {
+      message: error.message,
+      stack: error.stack,
+    });
     return NextResponse.json({ message: 'Error processing webhook' }, { status: 500 });
   }
 }

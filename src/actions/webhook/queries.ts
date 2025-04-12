@@ -1,4 +1,3 @@
-// src/actions/webhook/queries.ts
 import { client } from '@/lib/prisma';
 
 export const matchKeyword = async (keyword: string) => {
@@ -49,7 +48,8 @@ export const getKeywordAutomation = async (
 
 export const trackResponses = async (
   automationId: string,
-  type: 'COMMENT' | 'DM'
+  type: 'COMMENT' | 'DM',
+  commentId?: string
 ) => {
   if (type === 'COMMENT') {
     return await client.listener.update({
