@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
       console.log("Processing comment:", commentText, "Comment ID:", commentId, "Post ID:", postId, "Commenter ID:", commenterId);
 
-      // Skip DMs for reply comments (has parent_id)
+      // Skip DMs for reply comments
       const isReplyComment = !!parentId;
       if (isReplyComment) {
         console.log("Skipping DM for reply comment:", commentId, "Parent ID:", parentId);
@@ -136,32 +136,34 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // DM Intro (only for top-level comments and PRO plan)
-      if (!isReplyComment && plan === 'PRO') {
+      // DM Intro (only for top-level comments)
+      if (!isReplyComment) {
         let dmMessage = prompt;
-        console.log("PRO: Generating OpenRouter AI DM");
-        try {
-          const aiResponse = await openRouter.chat.completions.create({
-            model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
-            messages: [
-              { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"` },
-              { role: 'user', content: commentText },
-            ],
-            max_tokens: 60,
-            temperature: 0.1,
-          });
-          dmMessage = aiResponse.choices[0]?.message.content || prompt;
-          if (dmMessage.length > 300) {
-            console.warn(`AI response too long (${dmMessage.length} chars), truncating to 300 chars`);
-            dmMessage = dmMessage.substring(0, 297) + "...";
+        if (plan === 'PRO') {
+          console.log("PRO: Generating OpenRouter AI DM");
+          try {
+            const aiResponse = await openRouter.chat.completions.create({
+              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+              messages: [
+                { role: 'system', content: `${prompt}\n\nGenerate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"` },
+                { role: 'user', content: commentText },
+              ],
+              max_tokens: 60,
+              temperature: 0.1,
+            });
+            dmMessage = aiResponse.choices?.[0]?.message?.content ?? prompt;
+            if (dmMessage.length > 300) {
+              console.warn(`AI response too long (${dmMessage.length} chars), truncating to 300 chars`);
+              dmMessage = dmMessage.substring(0, 297) + "...";
+            }
+          } catch (aiError: any) {
+            console.error("AI DM generation failed:", {
+              message: aiError.message,
+              status: aiError.response?.status,
+              data: aiError.response?.data,
+            });
+            dmMessage = prompt;
           }
-        } catch (aiError: any) {
-          console.error("AI DM generation failed:", {
-            message: aiError.message,
-            status: aiError.response?.status,
-            data: aiError.response?.data,
-          });
-          dmMessage = prompt;
         }
 
         // Truncate to Instagram's 1000-char limit
@@ -170,27 +172,6 @@ export async function POST(req: NextRequest) {
           dmMessage = dmMessage.substring(0, 997) + "...";
         }
 
-        try {
-          console.log("Sending DM with intro:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
-          const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
-          console.log("DM sent successfully:", dmResponse);
-          await createChatHistory(automation.id, commenterId, entry.id, commentText);
-          await createChatHistory(automation.id, entry.id, commenterId, dmMessage);
-          await trackResponses(automation.id, 'DM', commentId);
-        } catch (error: any) {
-          console.error("Error sending DM:", {
-            message: error.message,
-            status: error.response?.status,
-            data: error.response?.data,
-          });
-        }
-      } else if (!isReplyComment) {
-        // FREE plan DM
-        let dmMessage = prompt;
-        if (dmMessage.length > 1000) {
-          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 1000 chars`);
-          dmMessage = dmMessage.substring(0, 997) + "...";
-        }
         try {
           console.log("Sending DM with intro:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
           const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
@@ -300,13 +281,13 @@ export async function POST(req: NextRequest) {
           const aiResponse = await openRouter.chat.completions.create({
             model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
             messages: [
-              { role: 'system', content: `${prompt}\n\nGenerate a response (max 300 chars)` },
+              { role: 'system', content: `${prompt}\n\nGenerate a friendly response (max 300 chars)` },
               ...limitedHistory,
             ],
             max_tokens: 60,
             temperature: 0.1,
           });
-          reply = aiResponse.choices[0]?.message.content || prompt;
+          reply = aiResponse.choices?.[0]?.message?.content ?? prompt;
           if (reply.length > 300) {
             console.warn(`AI response too long (${reply.length} chars), truncating to 300 chars`);
             reply = reply.substring(0, 297) + "...";
