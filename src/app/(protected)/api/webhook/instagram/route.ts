@@ -146,6 +146,8 @@ export async function POST(req: NextRequest) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
             dmMessage = keywordAutomation?.listener?.prompt || prompt;
             console.log("Using keyword prompt:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
+          } else {
+            console.log("No keyword match, using default prompt");
           }
         }
 
@@ -263,6 +265,8 @@ export async function POST(req: NextRequest) {
           const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
           reply = keywordAutomation?.listener?.prompt || prompt;
           console.log("Using keyword prompt:", reply.substring(0, 50) + (reply.length > 50 ? '...' : ''));
+        } else {
+          console.log("No keyword match, using default prompt");
         }
       }
 
