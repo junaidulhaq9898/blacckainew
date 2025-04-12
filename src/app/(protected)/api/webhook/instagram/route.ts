@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       const plan = automation.User?.subscription?.plan || 'FREE';
       const prompt = automation.listener.prompt;
 
-      // Comment Reply
+      // Comment Reply - Always use user-set value
       const commentReply = automation.listener.commentReply || 'Thanks for commenting!';
       try {
         console.log("📤 Sending comment reply:", commentReply);
@@ -97,7 +97,6 @@ export async function POST(req: NextRequest) {
         processedComments.add(commentId); // Mark as processed
       } catch (error) {
         console.error("❌ Error sending comment reply:", error);
-        // Continue to DM logic even if reply fails
       }
 
       // DM Intro
@@ -118,7 +117,7 @@ export async function POST(req: NextRequest) {
           if (dmMessage.length > 500) dmMessage = dmMessage.substring(0, 497) + "...";
         } catch (aiError) {
           console.error("❌ AI DM generation failed:", aiError);
-          dmMessage = prompt;
+          dmMessage = prompt; // Fallback to prompt
         }
       }
 
@@ -247,12 +246,11 @@ export async function POST(req: NextRequest) {
         await createChatHistory(automation.id, userId, accountId, messageText);
         await createChatHistory(automation.id, accountId, userId, reply);
         await trackResponses(automation.id, 'DM');
+        return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
       } catch (error) {
         console.error("❌ Error sending DM:", error);
+        return NextResponse.json({ message: 'Error sending message' }, { status: 500 });
       }
-
-      console.log("✅ Message processing completed");
-      return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
     }
 
     console.log("=== WEBHOOK DEBUG END ===");
