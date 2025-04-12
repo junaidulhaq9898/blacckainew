@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
               max_tokens: 60,
               temperature: 0.1,
             });
+            console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
               dmMessage = aiResponse.choices[0].message.content;
               if (dmMessage.length > 300) {
@@ -171,10 +172,10 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Truncate to Instagram's 1000-char limit
-        if (dmMessage.length > 1000) {
-          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 1000 chars`);
-          dmMessage = dmMessage.substring(0, 997) + "...";
+        // Truncate to 300 chars for consistency
+        if (dmMessage.length > 300) {
+          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 300 chars`);
+          dmMessage = dmMessage.substring(0, 297) + "...";
         }
 
         try {
@@ -292,6 +293,7 @@ export async function POST(req: NextRequest) {
             max_tokens: 60,
             temperature: 0.1,
           });
+          console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
           if (aiResponse.choices?.[0]?.message?.content) {
             reply = aiResponse.choices[0].message.content;
             if (reply.length > 300) {
@@ -312,10 +314,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Truncate to Instagram's 1000-char limit
-      if (reply.length > 1000) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 1000 chars`);
-        reply = reply.substring(0, 997) + "...";
+      // Truncate to 300 chars for consistency
+      if (reply.length > 300) {
+        console.warn(`DM reply too long (${reply.length} chars), truncating to 300 chars`);
+        reply = reply.substring(0, 297) + "...";
       }
 
       try {

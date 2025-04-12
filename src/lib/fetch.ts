@@ -39,7 +39,7 @@ export const sendCommentReply = async (
   console.log('Sending reply to comment:', commentId);
   try {
     const response = await axios.post(
-      `https://graph.instagram.com/v21.0/${commentId}/replies`,
+      `https://graph.instagram.com/v21.0/${commentId}/replies`, // Use Graph API explicitly
       {
         message: message,
       },
