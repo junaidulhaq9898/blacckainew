@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
             }
 
             const aiResponse = await openRouter.chat.completions.create({
-              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+              model: 'meta-llama/llama-4-maverick:free',
               messages: [
                 { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
