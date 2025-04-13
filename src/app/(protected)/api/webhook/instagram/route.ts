@@ -145,15 +145,17 @@ export async function POST(req: NextRequest) {
               console.log("No keyword match, using default prompt:", systemMessage);
             }
 
+            // Increased max_tokens for a more complete response
             const aiResponse = await openRouter.chat.completions.create({
-              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+              model: 'google/gemma-3-27b-it:free',
               messages: [
                 { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 8,
+              max_tokens: 100,  // Increased tokens
               temperature: 0.1,
             });
+
             console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
               dmMessage = aiResponse.choices[0].message.content;
@@ -319,7 +321,7 @@ export async function POST(req: NextRequest) {
               { role: 'system', content: systemMessage },
               ...limitedHistory,
             ],
-            max_tokens: 8,
+            max_tokens: 100,  // Increased tokens
             temperature: 0.1,
           });
           console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
