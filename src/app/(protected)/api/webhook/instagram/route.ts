@@ -150,19 +150,19 @@ export async function POST(req: NextRequest) {
               messages: [
                 { 
                   role: 'system', 
-                  content: `${systemMessage}\n\nRespond concisely (under 50 characters) to the user's comment, following the tone and objectives outlined.` 
+                  content: `${systemMessage}\n\nAnswer the user's question directly using details from the prompt, like location or products. Keep it under 100 characters, friendly, and professional.` 
                 },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 20,
-              temperature: 0.7,
+              max_tokens: 25,
+              temperature: 0.8,
             });
             console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
               dmMessage = aiResponse.choices[0].message.content.trim();
               console.log("AI DM generated:", dmMessage);
               if (dmMessage.length > 50) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 50 chars`);
+                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 100 chars`);
                 dmMessage = dmMessage.substring(0, 47) + "...";
               }
             } else {
@@ -288,7 +288,7 @@ export async function POST(req: NextRequest) {
       if (plan === 'PRO') {
         console.log("PRO: Generating OpenRouter AI response");
         try {
-          const limitedHistory = history.slice(-2); // Include last 2 messages for context
+          const limitedHistory = history.slice(-2);
           limitedHistory.push({ role: 'user', content: messageText });
 
           const matcher = await matchKeyword(messageText.toLowerCase());
@@ -303,23 +303,23 @@ export async function POST(req: NextRequest) {
           }
 
           const aiResponse = await openRouter.chat.completions.create({
-            model: 'meta-llama/llama-3.1-8b-instruct:free',
+            model: 'google/gemma-3-27b-it:free',
             messages: [
               { 
                 role: 'system', 
-                content: `${systemMessage}\n\nRespond concisely (under 50 characters) to the user's message, following the tone and objectives outlined.` 
+                content: `${systemMessage}\n\nAnswer the user's question directly using details from the prompt, like location or products. Keep it under 100 characters, friendly, and professional.` 
               },
               ...limitedHistory,
             ],
-            max_tokens: 20,
-            temperature: 0.7,
+            max_tokens: 25,
+            temperature: 0.8,
           });
           console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
           if (aiResponse.choices?.[0]?.message?.content) {
             reply = aiResponse.choices[0].message.content.trim();
             console.log("AI reply generated:", reply);
             if (reply.length > 50) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 50 chars`);
+              console.warn(`AI response too long (${reply.length} chars), truncating to 100 chars`);
               reply = reply.substring(0, 47) + "...";
             }
           } else {
@@ -339,7 +339,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (reply.length > 50) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 50 chars`);
+        console.warn(`DM reply too long (${reply.length} chars), truncating to 100 chars`);
         reply = reply.substring(0, 47) + "...";
       }
 
