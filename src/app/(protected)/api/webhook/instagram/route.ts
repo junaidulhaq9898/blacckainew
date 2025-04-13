@@ -136,39 +136,42 @@ export async function POST(req: NextRequest) {
           try {
             const matcher = await matchKeyword(commentText);
             console.log("Keyword match result:", matcher);
-            let systemMessage = prompt;
+            let systemMessage = 'Hi! Ask away!';
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-              systemMessage = keywordAutomation?.listener?.prompt || prompt;
-              console.log("Using keyword system message");
+              systemMessage = keywordAutomation?.listener?.prompt || systemMessage;
+              console.log("Using keyword system message:", systemMessage);
             } else {
-              console.log("No keyword match, using automation prompt");
+              console.log("No keyword match, using fallback prompt:", systemMessage);
             }
 
             const aiResponse = await openRouter.chat.completions.create({
-              model: 'meta-llama/llama-3.1-8b-instruct:free',
+              model: 'google/gemma-3-27b-it:free',
               messages: [
-                { 
-                  role: 'system', 
-                  content: `${systemMessage}\n\nAnswer the user's question directly using details from the prompt, like location or products. Keep it under 100 characters, friendly, and professional.` 
-                },
+                { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 25,
-              temperature: 0.8,
+              max_tokens: 6,
+              temperature: 0.1,
             });
             console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
-              dmMessage = aiResponse.choices[0].message.content.trim();
+              dmMessage = aiResponse.choices[0].message.content;
               console.log("AI DM generated:", dmMessage);
-              if (dmMessage.length > 50) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 100 chars`);
-                dmMessage = dmMessage.substring(0, 47) + "...";
+              if (dmMessage.length > 40) {
+                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 40 chars`);
+                dmMessage = dmMessage.substring(0, 37) + "...";
               }
             } else {
-              console.warn("No valid AI response, using fallback");
-              dmMessage = "Hello! How can I assist you today?";
-              console.log("Using fallback DM:", dmMessage);
+              console.warn("No valid AI response, using keyword or fallback");
+              if (matcher?.automationId) {
+                const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+                dmMessage = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
+                console.log("Using keyword prompt:", dmMessage);
+              } else {
+                dmMessage = 'Hi! Ask away!';
+                console.log("Using fallback prompt:", dmMessage);
+              }
             }
           } catch (aiError: any) {
             console.error("AI DM generation failed:", {
@@ -176,20 +179,27 @@ export async function POST(req: NextRequest) {
               status: aiError.response?.status,
               data: aiError.response?.data,
             });
-            dmMessage = "Hello! How can I assist you today?";
-            console.log("AI failed, using fallback DM:", dmMessage);
+            const matcher = await matchKeyword(commentText);
+            if (matcher?.automationId) {
+              const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+              dmMessage = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
+              console.log("AI failed, using keyword prompt:", dmMessage);
+            } else {
+              dmMessage = 'Hi! Ask away!';
+              console.log("AI failed, using fallback prompt:", dmMessage);
+            }
           }
         }
 
-        if (dmMessage.length > 50) {
-          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 50 chars`);
-          dmMessage = dmMessage.substring(0, 47) + "...";
+        if (dmMessage.length > 40) {
+          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 40 chars`);
+          dmMessage = dmMessage.substring(0, 37) + "...";
         }
 
         try {
           console.log("Sending DM with intro:", dmMessage);
           const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
-          console.log("DM sent successfully:", dmResponse);
+          console.log("DM sent successfully:", dmMessage);
           await createChatHistory(automation.id, commenterId, entry.id, commentText);
           await createChatHistory(automation.id, entry.id, commenterId, dmMessage);
           await trackResponses(automation.id, 'DM', commentId);
@@ -231,7 +241,7 @@ export async function POST(req: NextRequest) {
         automation = await getKeywordAutomation(automationId, true);
         console.log("Continuing with ongoing automation:", automation?.id);
       } else {
-        const matcher = await matchKeyword(messageText);
+        const matcher = await matchKeyword(messageText.toLowerCase());
         console.log("Keyword match result:", matcher);
         if (matcher?.automationId) {
           automation = await getKeywordAutomation(matcher.automationId, true);
@@ -288,44 +298,47 @@ export async function POST(req: NextRequest) {
       if (plan === 'PRO') {
         console.log("PRO: Generating OpenRouter AI response");
         try {
-          const limitedHistory = history.slice(-2);
+          const limitedHistory = history.slice(-1);
           limitedHistory.push({ role: 'user', content: messageText });
 
           const matcher = await matchKeyword(messageText.toLowerCase());
           console.log("Keyword match result:", matcher);
-          let systemMessage = prompt;
+          let systemMessage = 'Hi! Ask away!';
           if (matcher?.automationId) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-            systemMessage = keywordAutomation?.listener?.prompt || prompt;
-            console.log("Using keyword system message");
+            systemMessage = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
+            console.log("Using keyword system message:", systemMessage);
           } else {
-            console.log("No keyword match, using automation prompt");
+            console.log("No keyword match, using fallback prompt:", systemMessage);
           }
 
           const aiResponse = await openRouter.chat.completions.create({
             model: 'google/gemma-3-27b-it:free',
             messages: [
-              { 
-                role: 'system', 
-                content: `${systemMessage}\n\nAnswer the user's question directly using details from the prompt, like location or products. Keep it under 100 characters, friendly, and professional.` 
-              },
+              { role: 'system', content: systemMessage },
               ...limitedHistory,
             ],
-            max_tokens: 25,
-            temperature: 0.8,
+            max_tokens: 6,
+            temperature: 0.1,
           });
           console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
           if (aiResponse.choices?.[0]?.message?.content) {
-            reply = aiResponse.choices[0].message.content.trim();
+            reply = aiResponse.choices[0].message.content;
             console.log("AI reply generated:", reply);
-            if (reply.length > 50) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 100 chars`);
-              reply = reply.substring(0, 47) + "...";
+            if (reply.length > 40) {
+              console.warn(`AI response too long (${reply.length} chars), truncating to 40 chars`);
+              reply = reply.substring(0, 37) + "...";
             }
           } else {
-            console.warn("No valid AI response, using fallback");
-            reply = "Hello! How can I assist you today?";
-            console.log("Using fallback prompt:", reply);
+            console.warn("No valid AI response, using keyword or fallback");
+            if (matcher?.automationId) {
+              const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+              reply = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
+              console.log("Using keyword prompt:", reply);
+            } else {
+              reply = 'Hi! Ask away!';
+              console.log("Using fallback prompt:", reply);
+            }
           }
         } catch (aiError: any) {
           console.error("AI response generation failed:", {
@@ -333,14 +346,21 @@ export async function POST(req: NextRequest) {
             status: aiError.response?.status,
             data: aiError.response?.data,
           });
-          reply = "Hello! How can I assist you today?";
-          console.log("AI failed, using fallback prompt:", reply);
+          const matcher = await matchKeyword(messageText.toLowerCase());
+          if (matcher?.automationId) {
+            const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
+            reply = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
+            console.log("AI failed, using keyword prompt:", reply);
+          } else {
+            reply = 'Hi! Ask away!';
+            console.log("AI failed, using fallback prompt:", reply);
+          }
         }
       }
 
-      if (reply.length > 50) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 100 chars`);
-        reply = reply.substring(0, 47) + "...";
+      if (reply.length > 40) {
+        console.warn(`DM reply too long (${reply.length} chars), truncating to 40 chars`);
+        reply = reply.substring(0, 37) + "...";
       }
 
       try {
