@@ -1,4 +1,3 @@
-// src/app/(protected)/api/webhook/instagram/route.ts
 import { findAutomation } from '@/actions/automations/queries';
 import {
   createChatHistory,
@@ -13,7 +12,6 @@ import { client } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
-// Store processed comment IDs to prevent duplicates
 const processedComments = new Set<string>();
 
 interface Integration {
@@ -57,7 +55,6 @@ export async function POST(req: NextRequest) {
 
     console.log("Entry ID:", entry.id);
 
-    // Handle Comments
     if (entry.changes && entry.changes[0].field === 'comments') {
       const commentData = entry.changes[0].value;
       const commentText = commentData.text.toLowerCase();
@@ -66,7 +63,6 @@ export async function POST(req: NextRequest) {
       const commenterId = commentData.from.id;
       const parentId = commentData.parent_id;
 
-      // Check if comment was already processed
       if (processedComments.has(commentId)) {
         console.log("Comment already processed:", commentId);
         return NextResponse.json({ message: 'Comment already processed' }, { status: 200 });
@@ -74,7 +70,6 @@ export async function POST(req: NextRequest) {
 
       console.log("Processing comment:", commentText, "Comment ID:", commentId, "Post ID:", postId, "Commenter ID:", commenterId);
 
-      // Skip DMs for reply comments
       const isReplyComment = !!parentId;
       if (isReplyComment) {
         console.log("Skipping DM for reply comment:", commentId, "Parent ID:", parentId);
@@ -109,7 +104,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
       }
 
-      // Validate token
       const isTokenValid = await validateToken(token);
       if (!isTokenValid) {
         console.log("Invalid token, skipping comment reply and DM");
@@ -120,7 +114,6 @@ export async function POST(req: NextRequest) {
       const prompt = automation.listener.prompt;
       const commentReply = automation.listener.commentReply;
 
-      // Comment Reply (same for PRO and FREE)
       try {
         console.log("Sending comment reply:", commentReply);
         const replyResponse = await sendCommentReply(commentId, commentReply, token);
@@ -136,7 +129,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // DM Intro (only for top-level comments)
       if (!isReplyComment) {
         let dmMessage = prompt;
         if (plan === 'PRO') {
@@ -144,15 +136,13 @@ export async function POST(req: NextRequest) {
           try {
             const matcher = await matchKeyword(commentText);
             console.log("Keyword match result:", matcher);
-            let systemMessage = 'Reply in 150 chars or less, casual and friendly, to the comment. No bold, lists, or headers.';
+            let systemMessage = prompt; // Use default automation prompt
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-              systemMessage = keywordAutomation?.listener?.prompt || systemMessage;
-              if (systemMessage.length > 150) {
-                console.warn(`Keyword system message too long (${systemMessage.length} chars), using default`);
-                systemMessage = 'Reply in 150 chars or less, casual and friendly, to the comment. No bold, lists, or headers.';
-              }
-              console.log("Using system message:", systemMessage);
+              systemMessage = keywordAutomation?.listener?.prompt || prompt;
+              console.log("Using keyword system message:", systemMessage);
+            } else {
+              console.log("No keyword match, using default prompt:", systemMessage);
             }
 
             const aiResponse = await openRouter.chat.completions.create({
@@ -161,26 +151,22 @@ export async function POST(req: NextRequest) {
                 { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 30,
-              temperature: 0.2,
+              max_tokens: 12,
+              temperature: 0.1,
             });
             console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
               dmMessage = aiResponse.choices[0].message.content;
               console.log("AI DM generated:", dmMessage);
-              if (dmMessage.length > 150) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 150 chars`);
-                dmMessage = dmMessage.substring(0, 147) + "...";
+              if (dmMessage.length > 70) {
+                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 70 chars`);
+                dmMessage = dmMessage.substring(0, 67) + "...";
               }
             } else {
-              console.warn("No valid AI response, checking keyword or using prompt");
+              console.warn("No valid AI response, using keyword or default prompt");
               if (matcher?.automationId) {
                 const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
                 dmMessage = keywordAutomation?.listener?.prompt || prompt;
-                if (dmMessage.length > 150) {
-                  console.warn(`Keyword prompt too long (${dmMessage.length} chars), using default prompt`);
-                  dmMessage = prompt;
-                }
                 console.log("Using keyword prompt:", dmMessage);
               }
             }
@@ -194,21 +180,16 @@ export async function POST(req: NextRequest) {
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
               dmMessage = keywordAutomation?.listener?.prompt || prompt;
-              if (dmMessage.length > 150) {
-                console.warn(`Keyword prompt too long (${dmMessage.length} chars), using default prompt`);
-                dmMessage = prompt;
-              }
               console.log("AI failed, using keyword prompt:", dmMessage);
             } else {
-              console.log("AI failed, using default prompt");
+              console.log("AI failed, using default prompt:", prompt);
             }
           }
         }
 
-        // Truncate to 150 chars
-        if (dmMessage.length > 150) {
-          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 150 chars`);
-          dmMessage = dmMessage.substring(0, 147) + "...";
+        if (dmMessage.length > 70) {
+          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 70 chars`);
+          dmMessage = dmMessage.substring(0, 67) + "...";
         }
 
         try {
@@ -231,7 +212,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
     }
 
-    // Handle Messages
     const messaging = entry.messaging?.[0];
     console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
 
@@ -314,48 +294,42 @@ export async function POST(req: NextRequest) {
       if (plan === 'PRO') {
         console.log("PRO: Generating OpenRouter AI response");
         try {
-          const limitedHistory = history.slice(-3);
+          const limitedHistory = history.slice(-1);
           limitedHistory.push({ role: 'user', content: messageText });
 
           const matcher = await matchKeyword(messageText);
           console.log("Keyword match result:", matcher);
-          let systemMessage = 'Reply in 150 chars or less, casual and friendly, to the message. No bold, lists, or headers.';
+          let systemMessage = prompt; // Use default automation prompt
           if (matcher?.automationId) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-            systemMessage = keywordAutomation?.listener?.prompt || systemMessage;
-            if (systemMessage.length > 150) {
-              console.warn(`Keyword system message too long (${systemMessage.length} chars), using default`);
-              systemMessage = 'Reply in 150 chars or less, casual and friendly, to the message. No bold, lists, or headers.';
-            }
-            console.log("Using system message:", systemMessage);
+            systemMessage = keywordAutomation?.listener?.prompt || prompt;
+            console.log("Using keyword system message:", systemMessage);
+          } else {
+            console.log("No keyword match, using default prompt:", systemMessage);
           }
 
           const aiResponse = await openRouter.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
+            model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
             messages: [
               { role: 'system', content: systemMessage },
               ...limitedHistory,
             ],
-            max_tokens: 30,
-            temperature: 0.2,
+            max_tokens: 12,
+            temperature: 0.1,
           });
           console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
           if (aiResponse.choices?.[0]?.message?.content) {
             reply = aiResponse.choices[0].message.content;
             console.log("AI reply generated:", reply);
-            if (reply.length > 150) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 150 chars`);
-              reply = reply.substring(0, 147) + "...";
+            if (reply.length > 70) {
+              console.warn(`AI response too long (${reply.length} chars), truncating to 70 chars`);
+              reply = reply.substring(0, 67) + "...";
             }
           } else {
-            console.warn("No valid AI response, checking keyword or using prompt");
+            console.warn("No valid AI response, using keyword or default prompt");
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
               reply = keywordAutomation?.listener?.prompt || prompt;
-              if (reply.length > 150) {
-                console.warn(`Keyword prompt too long (${reply.length} chars), using default prompt`);
-                reply = prompt;
-              }
               console.log("Using keyword prompt:", reply);
             }
           }
@@ -369,21 +343,16 @@ export async function POST(req: NextRequest) {
           if (matcher?.automationId) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
             reply = keywordAutomation?.listener?.prompt || prompt;
-            if (reply.length > 150) {
-              console.warn(`Keyword prompt too long (${reply.length} chars), using default prompt`);
-              reply = prompt;
-            }
             console.log("AI failed, using keyword prompt:", reply);
           } else {
-            console.log("AI failed, using default prompt");
+            console.log("AI failed, using default prompt:", prompt);
           }
         }
       }
 
-      // Truncate to 150 chars
-      if (reply.length > 150) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 150 chars`);
-        reply = reply.substring(0, 147) + "...";
+      if (reply.length > 70) {
+        console.warn(`DM reply too long (${reply.length} chars), truncating to 70 chars`);
+        reply = reply.substring(0, 67) + "...";
       }
 
       try {
