@@ -1,4 +1,3 @@
-// src/lib/fetch.ts
 import axios from 'axios';
 
 export const refreshToken = async (token: string) => {
@@ -39,7 +38,7 @@ export const sendCommentReply = async (
   console.log('Sending reply to comment:', commentId);
   try {
     const response = await axios.post(
-      `https://graph.instagram.com/v21.0/${commentId}/replies`, // Use Graph API explicitly
+      `https://graph.instagram.com/v21.0/${commentId}/replies`,
       {
         message: message,
       },
