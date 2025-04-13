@@ -144,36 +144,44 @@ export async function POST(req: NextRequest) {
           try {
             const matcher = await matchKeyword(commentText);
             console.log("Keyword match result:", matcher);
-            let systemMessage = `Generate a friendly intro DM (max 300 chars) responding to the comment: "${commentText}"`;
+            let systemMessage = 'Generate a short, friendly DM (max 200 chars) responding to the comment.';
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
               systemMessage = keywordAutomation?.listener?.prompt || systemMessage;
-              console.log("Using keyword system message:", systemMessage.substring(0, 50) + (systemMessage.length > 50 ? '...' : ''));
+              if (systemMessage.length > 200) {
+                console.warn(`Keyword system message too long (${systemMessage.length} chars), using default`);
+                systemMessage = 'Generate a short, friendly DM (max 200 chars) responding to the comment.';
+              }
+              console.log("Using system message:", systemMessage);
             }
 
             const aiResponse = await openRouter.chat.completions.create({
-              model: 'meta-llama/llama-4-maverick:free',
+              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
               messages: [
                 { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 60,
-              temperature: 0.1,
+              max_tokens: 40,
+              temperature: 0.3,
             });
             console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
             if (aiResponse.choices?.[0]?.message?.content) {
               dmMessage = aiResponse.choices[0].message.content;
               console.log("AI DM generated:", dmMessage);
-              if (dmMessage.length > 300) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 300 chars`);
-                dmMessage = dmMessage.substring(0, 297) + "...";
+              if (dmMessage.length > 200) {
+                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 200 chars`);
+                dmMessage = dmMessage.substring(0, 197) + "...";
               }
             } else {
               console.warn("No valid AI response, checking keyword or using prompt");
               if (matcher?.automationId) {
                 const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
                 dmMessage = keywordAutomation?.listener?.prompt || prompt;
-                console.log("Using keyword prompt:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
+                if (dmMessage.length > 200) {
+                  console.warn(`Keyword prompt too long (${dmMessage.length} chars), using default prompt`);
+                  dmMessage = prompt;
+                }
+                console.log("Using keyword prompt:", dmMessage);
               }
             }
           } catch (aiError: any) {
@@ -186,21 +194,25 @@ export async function POST(req: NextRequest) {
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
               dmMessage = keywordAutomation?.listener?.prompt || prompt;
-              console.log("AI failed, using keyword prompt:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
+              if (dmMessage.length > 200) {
+                console.warn(`Keyword prompt too long (${dmMessage.length} chars), using default prompt`);
+                dmMessage = prompt;
+              }
+              console.log("AI failed, using keyword prompt:", dmMessage);
             } else {
               console.log("AI failed, using default prompt");
             }
           }
         }
 
-        // Truncate to 300 chars
-        if (dmMessage.length > 300) {
-          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 300 chars`);
-          dmMessage = dmMessage.substring(0, 297) + "...";
+        // Truncate to 200 chars
+        if (dmMessage.length > 200) {
+          console.warn(`DM message too long (${dmMessage.length} chars), truncating to 200 chars`);
+          dmMessage = dmMessage.substring(0, 197) + "...";
         }
 
         try {
-          console.log("Sending DM with intro:", dmMessage.substring(0, 50) + (dmMessage.length > 50 ? '...' : ''));
+          console.log("Sending DM with intro:", dmMessage);
           const dmResponse = await sendDM(entry.id, commenterId, dmMessage, token);
           console.log("DM sent successfully:", dmResponse);
           await createChatHistory(automation.id, commenterId, entry.id, commentText);
@@ -307,11 +319,15 @@ export async function POST(req: NextRequest) {
 
           const matcher = await matchKeyword(messageText);
           console.log("Keyword match result:", matcher);
-          let systemMessage = `Generate a friendly response (max 300 chars) to the message: "${messageText}"`;
+          let systemMessage = 'Generate a short, friendly response (max 200 chars) to the message.';
           if (matcher?.automationId) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
             systemMessage = keywordAutomation?.listener?.prompt || systemMessage;
-            console.log("Using keyword system message:", systemMessage.substring(0, 50) + (systemMessage.length > 50 ? '...' : ''));
+            if (systemMessage.length > 200) {
+              console.warn(`Keyword system message too long (${systemMessage.length} chars), using default`);
+              systemMessage = 'Generate a short, friendly response (max 200 chars) to the message.';
+            }
+            console.log("Using system message:", systemMessage);
           }
 
           const aiResponse = await openRouter.chat.completions.create({
@@ -320,23 +336,27 @@ export async function POST(req: NextRequest) {
               { role: 'system', content: systemMessage },
               ...limitedHistory,
             ],
-            max_tokens: 60,
-            temperature: 0.1,
+            max_tokens: 40,
+            temperature: 0.3,
           });
           console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
           if (aiResponse.choices?.[0]?.message?.content) {
             reply = aiResponse.choices[0].message.content;
             console.log("AI reply generated:", reply);
-            if (reply.length > 300) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 300 chars`);
-              reply = reply.substring(0, 297) + "...";
+            if (reply.length > 200) {
+              console.warn(`AI response too long (${reply.length} chars), truncating to 200 chars`);
+              reply = reply.substring(0, 197) + "...";
             }
           } else {
             console.warn("No valid AI response, checking keyword or using prompt");
             if (matcher?.automationId) {
               const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
               reply = keywordAutomation?.listener?.prompt || prompt;
-              console.log("Using keyword prompt:", reply.substring(0, 50) + (reply.length > 50 ? '...' : ''));
+              if (reply.length > 200) {
+                console.warn(`Keyword prompt too long (${reply.length} chars), using default prompt`);
+                reply = prompt;
+              }
+              console.log("Using keyword prompt:", reply);
             }
           }
         } catch (aiError: any) {
@@ -349,21 +369,25 @@ export async function POST(req: NextRequest) {
           if (matcher?.automationId) {
             const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
             reply = keywordAutomation?.listener?.prompt || prompt;
-            console.log("AI failed, using keyword prompt:", reply.substring(0, 50) + (reply.length > 50 ? '...' : ''));
+            if (reply.length > 200) {
+              console.warn(`Keyword prompt too long (${reply.length} chars), using default prompt`);
+              reply = prompt;
+            }
+            console.log("AI failed, using keyword prompt:", reply);
           } else {
             console.log("AI failed, using default prompt");
           }
         }
       }
 
-      // Truncate to 300 chars
-      if (reply.length > 300) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 300 chars`);
-        reply = reply.substring(0, 297) + "...";
+      // Truncate to 200 chars
+      if (reply.length > 200) {
+        console.warn(`DM reply too long (${reply.length} chars), truncating to 200 chars`);
+        reply = reply.substring(0, 197) + "...";
       }
 
       try {
-        console.log("Sending DM:", reply.substring(0, 50) + (reply.length > 50 ? '...' : ''));
+        console.log("Sending DM:", reply);
         const dmResponse = await sendDM(accountId, userId, reply, token);
         console.log("DM sent successfully:", dmResponse);
         await createChatHistory(automation.id, userId, accountId, messageText);
