@@ -149,12 +149,12 @@ export async function POST(req: NextRequest) {
 
             // Call OpenRouter API to generate response
             const aiResponse = await openRouter.chat.completions.create({
-              model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+              model: 'google/gemma-3-27b-it:free',
               messages: [
                 { role: 'system', content: systemMessage },
                 { role: 'user', content: commentText },
               ],
-              max_tokens: 100,  // Increased tokens for more detailed response
+              max_tokens: 150,  // Increased tokens for more detailed response
               temperature: 0.1,
             });
 
@@ -166,9 +166,9 @@ export async function POST(req: NextRequest) {
               console.log("AI DM generated:", dmMessage);
 
               // Ensure the response is not too long
-              if (dmMessage.length > 50) {
-                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 50 chars`);
-                dmMessage = dmMessage.substring(0, 47) + "...";
+              if (dmMessage.length > 150) {
+                console.warn(`AI response too long (${dmMessage.length} chars), truncating to 150 chars`);
+                dmMessage = dmMessage.substring(0, 147) + "...";
               }
             } else {
               console.warn("No valid AI response, using fallback prompt");
@@ -203,173 +203,6 @@ export async function POST(req: NextRequest) {
 
       console.log("Comment processing completed");
       return NextResponse.json({ message: 'Comment processed' }, { status: 200 });
-    }
-
-    const messaging = entry.messaging?.[0];
-    console.log("Messaging Object:", JSON.stringify(messaging, null, 2));
-
-    if (messaging?.read || messaging?.message?.is_echo) {
-      console.log("Skipping read receipt or echo message");
-      return NextResponse.json({ message: 'Receipt processed' }, { status: 200 });
-    }
-
-    if (messaging?.message?.text) {
-      const messageText = messaging.message.text;
-      const userId = messaging.sender.id;
-      const accountId = messaging.recipient.id;
-
-      console.log("Processing message:", messageText);
-      console.log("Sender ID (userId):", userId, "Recipient ID (accountId):", accountId);
-
-      const { history, automationId } = await getChatHistory(userId, accountId);
-      const isOngoing = history.length > 0;
-      console.log("Ongoing conversation check:", isOngoing, "History length:", history.length, "Automation ID from history:", automationId);
-
-      let automation;
-      if (isOngoing && automationId) {
-        automation = await getKeywordAutomation(automationId, true);
-        console.log("Continuing with ongoing automation:", automation?.id);
-      } else {
-        const matcher = await matchKeyword(messageText);
-        console.log("Keyword match result:", matcher);
-        if (matcher?.automationId) {
-          automation = await getKeywordAutomation(matcher.automationId, true);
-          console.log("Starting automation via keyword:", automation?.id);
-        } else {
-          automation = await client.automation.findFirst({
-            where: {
-              User: {
-                integrations: {
-                  some: {
-                    token: { not: undefined },
-                    instagramId: accountId,
-                  },
-                },
-              },
-            },
-            include: {
-              User: {
-                select: {
-                  subscription: { select: { plan: true } },
-                  integrations: { select: { token: true, instagramId: true } },
-                },
-              },
-              listener: true,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-          if (automation) {
-            console.log("Started automation for new user:", automation.id);
-          } else {
-            console.log("No automation found for account:", accountId);
-            return NextResponse.json({ message: 'No automation found' }, { status: 200 });
-          }
-        }
-      }
-
-      if (!automation || !automation.listener?.prompt) {
-        console.log("No automation or prompt found for account:", accountId);
-        return NextResponse.json({ message: 'No automation or prompt found' }, { status: 200 });
-      }
-
-      console.log("Automation plan:", automation.User?.subscription?.plan);
-
-      const token = automation.User?.integrations.find((i: Integration) => i.instagramId === accountId)?.token || automation.User?.integrations[0]?.token;
-      if (!token) {
-        console.log("No valid integration token found");
-        return NextResponse.json({ message: 'No valid integration token' }, { status: 200 });
-      }
-
-      const plan = automation.User?.subscription?.plan || 'FREE';
-      const prompt = automation.listener.prompt;
-
-      let reply = prompt;
-      if (plan === 'PRO') {
-        console.log("PRO: Generating OpenRouter AI response");
-        try {
-          const limitedHistory = history.slice(-1);
-          limitedHistory.push({ role: 'user', content: messageText });
-
-          const matcher = await matchKeyword(messageText.toLowerCase());
-          console.log("Keyword match result:", matcher);
-          let systemMessage = prompt;
-          if (matcher?.automationId) {
-            const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-            systemMessage = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
-            console.log("Using keyword system message:", systemMessage);
-          } else {
-            console.log("No keyword match, using fallback prompt");
-            systemMessage = 'Hi! Ask away!';
-          }
-
-          const aiResponse = await openRouter.chat.completions.create({
-            model: 'google/gemma-3-27b-it:free',
-            messages: [
-              { role: 'system', content: systemMessage },
-              ...limitedHistory,
-            ],
-            max_tokens: 100,  // Increased tokens for more detailed response
-            temperature: 0.1,
-          });
-          console.log("Raw AI response:", JSON.stringify(aiResponse, null, 2));
-          if (aiResponse.choices?.[0]?.message?.content) {
-            reply = aiResponse.choices[0].message.content;
-            console.log("AI reply generated:", reply);
-            if (reply.length > 50) {
-              console.warn(`AI response too long (${reply.length} chars), truncating to 50 chars`);
-              reply = reply.substring(0, 47) + "...";
-            }
-          } else {
-            console.warn("No valid AI response, using keyword or fallback");
-            if (matcher?.automationId) {
-              const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-              reply = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
-              console.log("Using keyword prompt:", reply);
-            } else {
-              reply = 'Hi! Ask away!';
-              console.log("Using fallback prompt:", reply);
-            }
-          }
-        } catch (aiError: any) {
-          console.error("AI response generation failed:", {
-            message: aiError.message,
-            status: aiError.response?.status,
-            data: aiError.response?.data,
-          });
-          const matcher = await matchKeyword(messageText.toLowerCase());
-          if (matcher?.automationId) {
-            const keywordAutomation = await getKeywordAutomation(matcher.automationId, true);
-            reply = keywordAutomation?.listener?.prompt || 'Hi! Ask away!';
-            console.log("AI failed, using keyword prompt:", reply);
-          } else {
-            reply = 'Hi! Ask away!';
-            console.log("AI failed, using fallback prompt:", reply);
-          }
-        }
-      }
-
-      if (reply.length > 50) {
-        console.warn(`DM reply too long (${reply.length} chars), truncating to 50 chars`);
-        reply = reply.substring(0, 47) + "...";
-      }
-
-      try {
-        console.log("Sending DM:", reply);
-        const dmResponse = await sendDM(accountId, userId, reply, token);
-        console.log("DM sent successfully:", dmResponse);
-        await createChatHistory(automation.id, userId, accountId, messageText);
-        await createChatHistory(automation.id, accountId, userId, reply);
-        await trackResponses(automation.id, 'DM');
-      } catch (error: any) {
-        console.error("Error sending DM:", {
-          message: error.message,
-          status: error.response?.status,
-          data: error.response?.data,
-        });
-      }
-
-      console.log("Message processing completed");
-      return NextResponse.json({ message: `${plan} message sent` }, { status: 200 });
     }
 
     console.log("=== WEBHOOK DEBUG END ===");
