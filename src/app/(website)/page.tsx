@@ -26,7 +26,7 @@ export default function Home() {
         'Turn followers into customers with targeted messaging',
       ],
       cta: (
-        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+        <Link href="/dashboard">
           Get Started
         </Link>
       ),
@@ -43,7 +43,7 @@ export default function Home() {
         'Custom branding options',
       ],
       cta: (
-        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+        <Link href="/dashboard">
           Upgrade Now
         </Link>
       ),
