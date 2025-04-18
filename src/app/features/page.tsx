@@ -20,7 +20,7 @@ const Features = () => {
         <title>Smart Instagram Automation Tools | AI Instagram Marketing</title>
         <meta
           name="description"
-          content="Imagine responding instantly to every comment & DM with AI Instagram marketing that feels personal. Let our Instagram automation tools handle the work for you."
+          content="Imagine responding instantly to every comment &amp; DM with AI Instagram marketing that feels personal. Let our Instagram automation tools handle the work for you."
         />
       </Head>
       <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg">
