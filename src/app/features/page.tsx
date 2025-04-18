@@ -74,13 +74,13 @@ const Features = () => {
                 <div className="plan-card w-full max-w-md flex flex-col bg-gradient-to-b from-white/10 to-white/5 rounded-2xl p-8 backdrop-blur-sm border border-gray-800 hover:border-blue-500 transition-all duration-300">
                   <div className="flex-grow">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-2xl font-bold">Free Plan</h3>
+                      <h3 className="text-2xl font-bold text-white">Free Plan</h3>
                       <span className="px-3 py-1 text-sm text-blue-400 bg-blue-400/10 rounded-full">
                         Get Started
                       </span>
                     </div>
                     <p className="text-4xl font-bold mb-2">$0<span className="text-lg font-normal text-gray-400">/month</span></p>
-                    <p className="text-white-400 mb-8">Perfect for Getting Started</p>
+                    <p className="text-gray-400 mb-8">Perfect for Getting Started</p>
                     <ul className="space-y-4 mb-8">
                       <li className="flex items-start group">
                         <svg className="w-6 h-6 text-blue-500 mr-2 mt-1 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,7 +88,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Boost Engagement</strong>
-                          <span className="text-white-400">Automated comment replies to build connections</span>
+                          <span className="text-gray-400">Automated comment replies to build connections</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -97,7 +97,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Automate Replies</strong>
-                          <span className="text-white-400">Instant automated responses to followers</span>
+                          <span className="text-gray-400">Instant automated responses to followers</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -106,7 +106,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Convert Followers</strong>
-                          <span className="text-white-400">Turn followers into loyal customers</span>
+                          <span className="text-gray-400">Turn followers into loyal customers</span>
                         </span>
                       </li>
                     </ul>
@@ -122,13 +122,13 @@ const Features = () => {
                 <div className="plan-card w-full max-w-md flex flex-col bg-gradient-to-b from-white/10 to-white/5 rounded-2xl p-8 backdrop-blur-sm border border-gray-800 hover:border-purple-500 transition-all duration-300">
                   <div className="flex-grow">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-2xl font-bold">Smart AI Plan</h3>
+                      <h3 className="text-2xl font-bold text-white">Smart AI Plan</h3>
                       <span className="px-3 py-1 text-sm text-purple-400 bg-purple-400/10 rounded-full">
                         Popular
                       </span>
                     </div>
                     <p className="text-4xl font-bold mb-2">$99<span className="text-lg font-normal text-gray-400">/month</span></p>
-                    <p className="text-white-400 mb-8">Advanced Features for Power Users</p>
+                    <p className="text-gray-400 mb-8">Advanced Features for Power Users</p>
                     <ul className="space-y-4 mb-8">
                       <li className="flex items-start group">
                         <svg className="w-6 h-6 text-purple-500 mr-2 mt-1 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,7 +136,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">All Free Features</strong>
-                          <span className="text-white-400">Everything in Free plan, plus more</span>
+                          <span className="text-gray-400">Everything in Free plan, plus more</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -145,7 +145,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">AI-Powered Responses</strong>
-                          <span className="text-white-400">Smart, contextual automated replies</span>
+                          <span className="text-gray-400">Smart, contextual automated replies</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -154,7 +154,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Advanced Analytics</strong>
-                          <span className="text-white-400">Deep insights into your metrics</span>
+                          <span className="text-gray-400">Deep insights into your metrics</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -163,7 +163,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Priority Support</strong>
-                          <span className="text-white-400">24/7 priority customer service</span>
+                          <span className="text-gray-400">24/7 priority customer service</span>
                         </span>
                       </li>
                       <li className="flex items-start group">
@@ -172,7 +172,7 @@ const Features = () => {
                         </svg>
                         <span>
                           <strong className="block text-white">Custom Branding</strong>
-                          <span className="text-white-400">Personalized automated responses</span>
+                          <span className="text-gray-400">Personalized automated responses</span>
                         </span>
                       </li>
                     </ul>
@@ -325,15 +325,15 @@ const Features = () => {
         </div>
         <div className="grid md:grid-cols-3 gap-8">
           <div className="testimonial bg-blue-900/50 rounded-2xl p-6 backdrop-blur-sm">
-            <p className="mb-4 text-gray-300">"Before these tools, I spent hours responding to comments. I started creating more content and still managed to keep my engagement high!"</p>
+            <p className="mb-4 text-gray-300">\"Before these tools, I spent hours responding to comments. I started creating more content and still managed to keep my engagement high!\"</p>
             <p className="font-semibold">— Jane D., Business Owner</p>
           </div>
           <div className="testimonial bg-blue-900/50 rounded-2xl p-6 backdrop-blur-sm">
-            <p className="mb-4 text-gray-300">"The responses generated by the AI are on point. So my followers think I’m always available—even when I am away!"</p>
+            <p className="mb-4 text-gray-300">\"The responses generated by the AI are on point. So my followers think I’m always available—even when I am away!\"</p>
             <p className="font-semibold">— John L., Influencer</p>
           </div>
           <div className="testimonial bg-blue-900/50 rounded-2xl p-6 backdrop-blur-sm">
-            <p className="mb-4 text-gray-300">"Automation of Instagram comments has changed the game entirely. I never miss a question, and my sales are going up!"</p>
+            <p className="mb-4 text-gray-300">\"Automation of Instagram comments has changed the game entirely. I never miss a question, and my sales are going up!\"</p>
             <p className="font-semibold">— Sarah K., Small Business Owner</p>
           </div>
         </div>
