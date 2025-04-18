@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card'
 import { CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import Image from 'next/image'
@@ -26,7 +26,7 @@ export default function Home() {
         'Turn followers into customers with targeted messaging',
       ],
       cta: (
-        <Link href="/dashboard" style={{ textDecoration: 'none', color: 'blue' }}>
+        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
           Get Started
         </Link>
       ),
@@ -43,7 +43,7 @@ export default function Home() {
         'Custom branding options',
       ],
       cta: (
-        <Link href="/dashboard" style={{ textDecoration: 'none', color: 'blue' }}>
+        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
           Upgrade Now
         </Link>
       ),
@@ -53,7 +53,7 @@ export default function Home() {
   const faqs = [
     {
       question: 'Is Instagram DM automation safe?',
-      answer: 'Not every automation tool is safe for your account. With BlaccKAI, they use approved processes and keep within the borders of the platform ensuring the users are safe and compliant with instagram dm automation.',
+      answer: 'Not every automation tool is safe for your account. With BlaccKAI, they use approved processes and keep within the borders of the platform ensuring the users\' are safe and compliant with instagram dm automation.',
     },
     {
       question: 'What is DM AI response?',
@@ -392,7 +392,9 @@ export default function Home() {
                     </ul>
                   </CardContent>
                   <Link href="/dashboard">
-                    <Button className="w-full">{plan.cta}</Button>
+                    <Button className={`w-full ${plan.name === 'Free Plan' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}>
+                      {plan.cta}
+                    </Button>
                   </Link>
                 </Card>
               ))}
