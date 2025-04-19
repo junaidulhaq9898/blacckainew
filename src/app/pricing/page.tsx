@@ -24,13 +24,13 @@ const PricingPage: React.FC = () => {
         />
       </Head>
       <main className="bg-transparent">
-        <div className="plans-container bg-transparent min-h-screen">
-          <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg" style={{ background: 'linear-gradient(to bottom, #0f172a, #1e3a8a, #0f172a) !important', backgroundColor: '#0f172a !important' }}>
+        <div className="plans-container bg-transparent">
+          <section className="relative !bg-gradient-to-b !from-slate-900 !via-blue-900 !to-bg z-0">
             {/* Background Grid */}
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
-            <div className="relative">
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] z-[-1]" />
+            <div className="relative bg-transparent">
               {/* Header Section */}
-              <div className="container px-4 py-8">
+              <div className="container px-4 py-8 bg-transparent">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Image 
@@ -58,7 +58,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Hero Section */}
-              <div className="mx-auto mt-16 max-w-3xl text-center">
+              <div className="mx-auto mt-16 max-w-3xl text-center bg-transparent">
                 <h1 className="text-4xl font-bold leading-tight tracking-tighter text-white sm:text-5xl md:text-6xl lg:text-7xl">
                   Find the Best Instagram Automation Tool
                 </h1>
@@ -68,7 +68,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Why Choose Us */}
-              <div className="container mx-auto px-4 py-16">
+              <div className="container mx-auto px-4 py-16 bg-transparent">
                 <h2 className="text-3xl font-bold text-center mb-12 text-white">
                   Why Use the Best Instagram Automation Tool?
                 </h2>
@@ -99,7 +99,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Primary Benefits */}
-              <div className="container mx-auto px-4 py-16">
+              <div className="container mx-auto px-4 py-16 bg-transparent">
                 <h2 className="text-3xl font-bold text-center mb-12 text-white">
                   Primary Benefits of Our Instagram Automation Services
                 </h2>
@@ -150,7 +150,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Instagram SEO Importance */}
-              <div className="container mx-auto px-4 py-16">
+              <div className="container mx-auto px-4 py-16 bg-transparent">
                 <h2 className="text-3xl font-bold text-center mb-12 text-white">
                   Boost Your Instagram SEO
                 </h2>
@@ -181,7 +181,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Client Testimonials */}
-              <div className="container mx-auto px-4 py-16">
+              <div className="container mx-auto px-4 py-16 bg-transparent">
                 <h2 className="text-3xl font-bold text-center mb-12 text-white">
                   What Our Users Say
                 </h2>
@@ -212,7 +212,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* Pricing Plans */}
-              <div className="container mx-auto px-4">
+              <div className="container mx-auto px-4 bg-transparent">
                 <h2 className="text-3xl font-bold text-center mb-12 text-white">
                   Pricing Plans That Fit Your Needs
                 </h2>
@@ -293,7 +293,7 @@ const PricingPage: React.FC = () => {
               </div>
 
               {/* FAQs */}
-              <section className="container mx-auto px-4 py-16 max-w-7xl">
+              <section className="container mx-auto px-4 py-16 max-w-7xl bg-transparent">
                 <div className="text-center mb-12">
                   <h2 className="text-3xl font-bold mb-6">Frequently Asked Questions</h2>
                 </div>
@@ -348,7 +348,7 @@ const PricingPage: React.FC = () => {
               </section>
 
               {/* Call-to-Action Section */}
-              <div className="text-center mt-20 mb-20">
+              <div className="text-center mt-10 mb-10 bg-transparent">
                 <h2 className="text-3xl font-bold mb-6 text-white">
                   Prepared to Change Your Instagram?
                 </h2>
