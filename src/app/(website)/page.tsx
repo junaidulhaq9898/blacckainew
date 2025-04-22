@@ -34,7 +34,7 @@ export default function Home() {
     {
       name: 'Smart AI Plan',
       description: 'Advanced features for power users',
-      price: '$99',
+      price: '$4.99',
       features: [
         'All features from Free Plan',
         'AI-powered response generation',
