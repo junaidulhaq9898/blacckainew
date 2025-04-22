@@ -4,14 +4,19 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import Head from 'next/head';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, MoreVertical } from 'lucide-react';
 import { useState } from 'react';
 
 const PricingPage: React.FC = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleFaq = (index: number) => {
     setOpenFaq(openFaq === index ? null : index);
+  };
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
   };
 
   return (
@@ -41,20 +46,40 @@ const PricingPage: React.FC = () => {
                       className="object-contain"
                     />
                   </div>
-                  <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
-                    <Link href="/">Home</Link>
-                    <Link href="/features">Features</Link>
-                    <Link href="/pricing">Pricing</Link>
-                    <Link href="/about">About</Link>
-                  </nav>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-blue-400 hover:bg-blue-900/50 text-white"
-                  >
-                    <Link href="/dashboard">Login</Link>
-                  </Button>
+                  <div className="flex items-center gap-4">
+                    <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
+                      <Link href="/">Home</Link>
+                      <Link href="/features">Features</Link>
+                      <Link href="/pricing">Pricing</Link>
+                      <Link href="/about">About</Link>
+                    </nav>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="border-blue-400 hover:bg-blue-900/50 text-white"
+                    >
+                      <Link href="/dashboard">Login</Link>
+                    </Button>
+                    <button
+                      className="md:hidden text-blue-200"
+                      onClick={toggleMenu}
+                      aria-label="Toggle menu"
+                    >
+                      <MoreVertical className="h-6 w-6" />
+                    </button>
+                  </div>
                 </div>
+                {isMenuOpen && (
+                  <div className="md:hidden mt-4 bg-gray-900 rounded-lg shadow-lg p-4 animate-fadeIn">
+                    <nav className="flex flex-col space-y-4 text-blue-200">
+                      <Link href="/" onClick={toggleMenu}>Home</Link>
+                      <Link href="/features" onClick={toggleMenu}>Features</Link>
+                      <Link href="/pricing" onClick={toggleMenu}>Pricing</Link>
+                      <Link href="/about" onClick={toggleMenu}>About</Link>
+                      <Link href="/dashboard" onClick={toggleMenu}>Login</Link>
+                    </nav>
+                  </div>
+                )}
               </div>
 
               {/* Hero Section */}
@@ -234,7 +259,7 @@ const PricingPage: React.FC = () => {
                     },
                     {
                       planName: 'Smart AI Plan',
-                      price: '$99',
+                      price: '$4.99',
                       description: 'Ideal for businesses seeking advanced ai instagram marketing and instagram automation tools.',
                       features: [
                         'Includes all features from the Free Plan',

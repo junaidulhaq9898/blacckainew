@@ -1,18 +1,18 @@
 "use client";
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-} from '@/components/ui/card'
-import { CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
-import Image from 'next/image'
-import Link from 'next/link'
-import Head from 'next/head'
-import { useState } from 'react'
+} from '@/components/ui/card';
+import { CheckCircle, ChevronDown, ChevronUp, MoreVertical } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import Head from 'next/head';
+import { useState } from 'react';
 
 export default function Home() {
   const plans = [
@@ -53,31 +53,31 @@ export default function Home() {
   const faqs = [
     {
       question: 'Is Instagram DM automation safe?',
-      answer: 'Not every automation tool is safe for your account. With BlaccKAI, they use approved processes and keep within the borders of the platform ensuring the users&apos; are safe and compliant with instagram dm automation.',
+      answer: 'Not every automation tool is safe for your account. With BlaccK AI, they use approved processes and keep within the borders of the platform ensuring the users\' are safe and compliant with instagram dm automation.',
     },
     {
       question: 'What is DM AI response?',
-      answer: 'Instagram dm automation BlaccKAI employs ensures to track replied messages and respond back in question instantly. The system works through receiving grammatically correct relevant replies overflowing conversations maintaining them in the manner a normal person would, removing the need to type.',
+      answer: 'Instagram dm automation BlaccK AI employs ensures to track replied messages and respond back in question instantly. The system works through receiving grammatically correct relevant replies overflowing conversations maintaining them in the manner a normal person would, removing the need to type.',
     },
     {
-      question: 'Will my followers know it&apos;s automated?',
-      answer: 'Although we can customize messages and therefore have control over brand voice, you decide how BlaccKAI responds with AI thus tailoring the responses ensuring they were without being awkward for dm automation instagram.',
+      question: 'Will my followers know it\'s automated?',
+      answer: 'Although we can customize messages and therefore have control over brand voice, you decide how BlaccK AI responds with AI thus tailoring the responses ensuring they were without being awkward for dm automation instagram.',
     },
     {
       question: 'What would take place if Instagram alters its guidelines?',
-      answer: 'While Instagram has rules and policies that may change from time to time, BlaccKAI has its ways of making sure rules do not affect its users. Routine compliance is done to ensure users remain trouble free as BlaccKAI adapts to rule changes the platform makes for instagram dm automation.',
+      answer: 'While Instagram has rules and policies that may change from time to time, BlaccK AI has its ways of making sure rules do not affect its users. Routine compliance is done to ensure users remain trouble free as BlaccK AI adapts to rule changes the platform makes for instagram dm automation.',
     },
     {
       question: 'What happens in the case of customers needing the interaction of a human being?',
-      answer: 'In the event of sophisticated conversations, advanced automation will alert BlaccKAI towards no longer using bots for the interaction, and easy transitions to a human interface will be present within your discussions with dm automation instagram.',
+      answer: 'In the event of sophisticated conversations, advanced automation will alert BlaccK AI towards no longer using bots for the interaction, and easy transitions to a human interface will be present within your discussions with dm automation instagram.',
     },
     {
       question: 'What steps are necessary to protect users if Instagram displays “suspect automated behaviour on your account”?',
-      answer: 'Users who go against the app&apos;s terms of service may get flagged by Instagram. BlaccKAI adheres to its strict rules of API and usage guidelines which manage your level of risk for instagram we suspect automated behavior on your account.',
+      answer: 'Users who go against the app\'s terms of service may get flagged by Instagram. BlaccK AI adheres to its strict rules of API and usage guidelines which manage your level of risk for instagram we suspect automated behavior on your account.',
     },
     {
-      question: 'Is BlaccKAI suitable for Business Diskussions?',
-      answer: 'Certainly! On other platforms such as e-mail and Instagram, BlaccKAI greatly simplifies the control of business chat instagram. Customer care, selling and even engagement gets handled systematically by BlaccKAI.',
+      question: 'Is BlaccK AI suitable for Business Diskussions?',
+      answer: 'Certainly! On other platforms such as e-mail and Instagram, BlaccK AI greatly simplifies the control of business chat instagram. Customer care, selling and even engagement gets handled systematically by BlaccK AI.',
     },
     {
       question: 'How does Instagram DM Automation assist in the lead generation process?',
@@ -86,9 +86,14 @@ export default function Home() {
   ];
 
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleFaq = (index: number) => {
     setOpenFaq(openFaq === index ? null : index);
+  };
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
   };
 
   return (
@@ -117,30 +122,47 @@ export default function Home() {
                     />
                   </div>
                 </div>
-                <nav className="hidden space-x-6 text-sm text-white md:block">
-                  <Link href="/">Home</Link>
-                  <Link href="/features">Features</Link>
-                  <Link href="/pricing">Pricing</Link>
-                  <Link href="/about">About</Link>
-                </nav>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-blue-400 hover:bg-blue-900/50 text-white"
-                >
-                  <Link href="/dashboard">Login</Link>
-                </Button>
+                <div className="flex items-center gap-4">
+                  <nav className="hidden space-x-6 text-sm text-white md:block">
+                    <Link href="/">Home</Link>
+                    <Link href="/features">Features</Link>
+                    <Link href="/pricing">Pricing</Link>
+                    <Link href="/about">About</Link>
+                  </nav>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-blue-400 hover:bg-blue-900/50 text-white"
+                  >
+                    <Link href="/dashboard">Login</Link>
+                  </Button>
+                  <button
+                    className="md:hidden text-white"
+                    onClick={toggleMenu}
+                    aria-label="Toggle menu"
+                  >
+                    <MoreVertical className="h-6 w-6" />
+                  </button>
+                </div>
               </div>
-
+              {isMenuOpen && (
+                <div className="md:hidden mt-4 bg-gray-900 rounded-lg shadow-lg p-4 animate-fadeIn">
+                  <nav className="flex flex-col space-y-4 text-white">
+                    <Link href="/" onClick={toggleMenu}>Home</Link>
+                    <Link href="/features" onClick={toggleMenu}>Features</Link>
+                    <Link href="/pricing" onClick={toggleMenu}>Pricing</Link>
+                    <Link href="/about" onClick={toggleMenu}>About</Link>
+                    <Link href="/dashboard" onClick={toggleMenu}>Login</Link>
+                  </nav>
+                </div>
+              )}
               <div className="mx-auto mt-16 max-w-3xl text-center">
                 <h1 className="text-4xl font-bold leading-tight tracking-tighter text-white sm:text-5xl md:text-6xl lg:text-7xl">
-                  BlaccKAI – Simplified Instagram DM Automation
+                  BlaccK AI – Simplified Instagram DM Automation
                 </h1>
-
                 <p className="mt-6 text-lg text-white">
-                  BlaccKAI is aimed at brands and creators that wish to enhance their Instagram interactions by automating responses without sacrificing quality, compliance, or control. With BlaccKAI, whether it&apos;s inquiries, sales, or support, everything is streamlined thanks to dm automation instagram.
+                  BlaccK AI is aimed at brands and creators that wish to enhance their Instagram interactions by automating responses without sacrificing quality, compliance, or control. With BlaccK AI, whether it\'s inquiries, sales, or support, everything is streamlined thanks to dm automation instagram.
                 </p>
-
                 <div className="mt-8 flex justify-center gap-4">
                   <Button
                     size="lg"
@@ -170,14 +192,14 @@ export default function Home() {
         <section className="container w-full py-12 md:py-24 lg:py-32 bg-black">
           <div className="container px-4 md:px-6">
             <h2 className="text-4xl font-extrabold tracking-tighter sm:text-5xl text-center text-white">
-              How BlaccKAI Works
+              How BlaccK AI Works
             </h2>
             <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3">
               <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-t-4 border-blue-600">
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center font-bold">1</div>
                 <h3 className="text-2xl font-bold mt-4 text-white">Link Your Instagram</h3>
                 <p className="mt-4 text-white">
-                  All you need to do is link your Instagram account and blaccKAI will set up everything within seconds.
+                  All you need to do is link your Instagram account and blaccK AI will set up everything within seconds.
                 </p>
               </div>
               <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-t-4 border-blue-600">
@@ -191,13 +213,13 @@ export default function Home() {
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center font-bold">3</div>
                 <h3 className="text-2xl font-bold mt-4 text-white">Step Up Access & Revenues</h3>
                 <p className="mt-4 text-white">
-                  Relax and allow BlaccKAI to control the discussions as you focus on boosting your business productivity.
+                  Relax and allow BlaccK AI to control the discussions as you focus on boosting your business productivity.
                 </p>
               </div>
             </div>
 
             <h2 className="text-4xl font-extrabold tracking-tighter sm:text-5xl text-center mt-16 text-white">
-              What Makes BlaccKAI Better Than The Rest?
+              What Makes BlaccK AI Better Than The Rest?
             </h2>
             <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2">
               <div className="bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2">
@@ -208,7 +230,7 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-white">Automation Focused on Technical Accuracy</h3>
                 </div>
                 <p className="mt-4 text-white">
-                  Instead of providing a uniform solution to each message as most tools would, BlaccKAI applies high level intent discernment. Your audience will receive a tailored and contextually appropriate answer regardless of whether the question is a product inquiry, some form of support, or a thank you note.
+                  Instead of providing a uniform solution to each message as most tools would, BlaccK AI applies high level intent discernment. Your audience will receive a tailored and contextually appropriate answer regardless of whether the question is a product inquiry, some form of support, or a thank you note.
                 </p>
               </div>
               <div className="bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2">
@@ -219,7 +241,7 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-white">Controlled Privacy Automation</h3>
                 </div>
                 <p className="mt-4 text-white">
-                  BlaccKAI does not collect users&apos; messages and will not give their data to any outside company. All dm automation instagram done is under the users&apos; surveillance and all users have total dominion over every single action executed.
+                  BlaccK AI does not collect users\' messages and will not give their data to any outside company. All dm automation instagram done is under the users\' surveillance and all users have total dominion over every single action executed.
                 </p>
               </div>
               <div className="bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2">
@@ -230,7 +252,7 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-white">Smooth Transition to Human Chat Assistants</h3>
                 </div>
                 <p className="mt-4 text-white">
-                  In situations where delicate matters such as conversations take place, BlaccKAI allows dm automation instagram to be effortlessly transitioned to a human worker, meaning no prior context is lost.
+                  In situations where delicate matters such as conversations take place, BlaccK AI allows dm automation instagram to be effortlessly transitioned to a human worker, meaning no prior context is lost.
                 </p>
               </div>
               <div className="bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2">
@@ -241,7 +263,7 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-white">Accommodative System Development</h3>
                 </div>
                 <p className="mt-4 text-white">
-                  No matter if a client is receiving or sending anywhere from 10 to 10,000 messages, BlaccKAI is designed to provide the best level of service without undermining performance, meaning they are fast and dependable.
+                  No matter if a client is receiving or sending anywhere from 10 to 10,000 messages, BlaccK AI is designed to provide the best level of service without undermining performance, meaning they are fast and dependable.
                 </p>
               </div>
             </div>
@@ -254,7 +276,7 @@ export default function Home() {
                 <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-l-4 border-blue-600">
                   <h3 className="text-xl font-bold text-white">Instagram Direct Message Automation</h3>
                   <p className="mt-4 text-white">
-                    Dm automation instagram is streamlined to the most effortless aspect of one&apos;s daily life as responses to DMs can be sent instantly through custom flows, templates or AI replies.
+                    Dm automation instagram is streamlined to the most effortless aspect of one\'s daily life as responses to DMs can be sent instantly through custom flows, templates or AI replies.
                   </p>
                 </div>
                 <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-l-4 border-blue-600">
@@ -402,6 +424,15 @@ export default function Home() {
           </div>
         </section>
       </main>
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </>
   );
 }

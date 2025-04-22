@@ -10,20 +10,20 @@ type Props = {
 export const DASHBOARD_CARDS: Props[] = [
   {
     id: v4(),
-    label: 'Set-up Auto Replies',
-    subLabel: 'Deliver a product lineup through Instagram DM',
-    description: 'Get products in front of your followers in as many places',
+    label: 'Automate Instagram DMs',
+    subLabel: 'Showcase products through engaging conversations',
+    description: 'Deliver personalized product recommendations directly in DMs — automated, yet crafted to feel genuinely human.',
   },
   {
     id: v4(),
-    label: 'Answer Questions with AI',
-    subLabel: 'Identify and respond to queries with AI',
-    description: 'The intention of the message will be automatically detected',
+    label: 'AI That Understands and Responds',
+    subLabel: 'Handle questions with intelligence and empathy',
+    description: 'AI identifies intent and delivers tailored responses, making every interaction feel like a real conversation with your brand.',
   },
   {
     id: v4(),
-    label: 'Answer Questions with AI',
-    subLabel: 'Identify and respond to queries with AI',
-    description: 'The intention of the message will be automatically detected',
+    label: 'Custom Replies with a Human Touch',
+    subLabel: 'Let AI craft unique responses that resonate',
+    description: 'Every message feels thoughtfully written — AI adapts tone, context, and content to create meaningful, natural interactions.',
   },
 ]

@@ -1,10 +1,19 @@
+"use client";
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import Head from 'next/head';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, MoreVertical } from 'lucide-react';
+import { useState } from 'react';
 
 const AboutPage: React.FC = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
   return (
     <>
       <section className="relative bg-gradient-to-b from-slate-900 via-blue-900 to-bg">
@@ -21,20 +30,40 @@ const AboutPage: React.FC = () => {
                   className="object-contain"
                 />
               </div>
-              <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
-                <Link href="/">Home</Link>
-                <Link href="/features">Features</Link>
-                <Link href="/pricing">Pricing</Link>
-                <Link href="/about">About</Link>
-              </nav>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-blue-400 hover:bg-blue-900/50"
-              >
-                <Link href="/dashboard">Login</Link>
-              </Button>
+              <div className="flex items-center gap-4">
+                <nav className="hidden space-x-6 text-sm text-blue-200 md:block">
+                  <Link href="/">Home</Link>
+                  <Link href="/features">Features</Link>
+                  <Link href="/pricing">Pricing</Link>
+                  <Link href="/about">About</Link>
+                </nav>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-blue-400 hover:bg-blue-900/50"
+                >
+                  <Link href="/dashboard">Login</Link>
+                </Button>
+                <button
+                  className="md:hidden text-blue-200"
+                  onClick={toggleMenu}
+                  aria-label="Toggle menu"
+                >
+                  <MoreVertical className="h-6 w-6" />
+                </button>
+              </div>
             </div>
+            {isMenuOpen && (
+              <div className="md:hidden mt-4 bg-gray-900 rounded-lg shadow-lg p-4 animate-fadeIn">
+                <nav className="flex flex-col space-y-4 text-blue-200">
+                  <Link href="/" onClick={toggleMenu}>Home</Link>
+                  <Link href="/features" onClick={toggleMenu}>Features</Link>
+                  <Link href="/pricing" onClick={toggleMenu}>Pricing</Link>
+                  <Link href="/about" onClick={toggleMenu}>About</Link>
+                  <Link href="/dashboard" onClick={toggleMenu}>Login</Link>
+                </nav>
+              </div>
+            )}
             <div className="mx-auto mt-16 max-w-3xl text-center">
               <h1 className="text-3xl font-bold leading-tight tracking-tighter text-white sm:text-4xl md:text-5xl lg:text-6xl bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
                 Intelligent Automation: Enabling the Next Generation with Instagram Automation Software
@@ -165,6 +194,15 @@ const AboutPage: React.FC = () => {
           </div>
         </div>
       </section>
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </>
   );
 };

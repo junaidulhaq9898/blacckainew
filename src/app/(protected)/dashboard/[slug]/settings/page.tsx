@@ -60,7 +60,7 @@ export default function SettingsPage() {
             <div className="mt-4 text-blue-200">
               <p className="font-bold">You are on the Pro Plan</p>
               <ul className="list-disc ml-6 mt-2">
-                <li>Smart AI - $99/month</li>
+                <li>Smart AI - $4.99/month</li>
                 <li>All Free Plan features</li>
                 <li>AI-powered response generation</li>
                 <li>Advanced analytics and insights</li>
