@@ -53,14 +53,14 @@ export default function Home() {
   const faqs = [
     {
       question: 'Is Instagram DM automation safe?',
-      answer: 'Not every automation tool is safe for your account. With BlaccK AI, they use approved processes and keep within the borders of the platform ensuring the users\' are safe and compliant with instagram dm automation.',
+      answer: 'Not every automation tool is safe for your account. With BlaccK AI, they use approved processes and keep within the borders of the platform ensuring the users&apos; are safe and compliant with instagram dm automation.',
     },
     {
       question: 'What is DM AI response?',
       answer: 'Instagram dm automation BlaccK AI employs ensures to track replied messages and respond back in question instantly. The system works through receiving grammatically correct relevant replies overflowing conversations maintaining them in the manner a normal person would, removing the need to type.',
     },
     {
-      question: 'Will my followers know it\'s automated?',
+      question: 'Will my followers know it&apos;s automated?',
       answer: 'Although we can customize messages and therefore have control over brand voice, you decide how BlaccK AI responds with AI thus tailoring the responses ensuring they were without being awkward for dm automation instagram.',
     },
     {
@@ -73,7 +73,7 @@ export default function Home() {
     },
     {
       question: 'What steps are necessary to protect users if Instagram displays “suspect automated behaviour on your account”?',
-      answer: 'Users who go against the app\'s terms of service may get flagged by Instagram. BlaccK AI adheres to its strict rules of API and usage guidelines which manage your level of risk for instagram we suspect automated behavior on your account.',
+      answer: 'Users who go against the app&apos;s terms of service may get flagged by Instagram. BlaccK AI adheres to its strict rules of API and usage guidelines which manage your level of risk for instagram we suspect automated behavior on your account.',
     },
     {
       question: 'Is BlaccK AI suitable for Business Diskussions?',
@@ -161,7 +161,7 @@ export default function Home() {
                   BlaccK AI – Simplified Instagram DM Automation
                 </h1>
                 <p className="mt-6 text-lg text-white">
-                  BlaccK AI is aimed at brands and creators that wish to enhance their Instagram interactions by automating responses without sacrificing quality, compliance, or control. With BlaccK AI, whether it\'s inquiries, sales, or support, everything is streamlined thanks to dm automation instagram.
+                  BlaccK AI is aimed at brands and creators that wish to enhance their Instagram interactions by automating responses without sacrificing quality, compliance, or control. With BlaccK AI, whether it&apos;s inquiries, sales, or support, everything is streamlined thanks to dm automation instagram.
                 </p>
                 <div className="mt-8 flex justify-center gap-4">
                   <Button
@@ -241,7 +241,7 @@ export default function Home() {
                   <h3 className="text-xl font-bold text-white">Controlled Privacy Automation</h3>
                 </div>
                 <p className="mt-4 text-white">
-                  BlaccK AI does not collect users\' messages and will not give their data to any outside company. All dm automation instagram done is under the users\' surveillance and all users have total dominion over every single action executed.
+                  BlaccK AI does not collect users&apos; messages and will not give their data to any outside company. All dm automation instagram done is under the users&apos; surveillance and all users have total dominion over every single action executed.
                 </p>
               </div>
               <div className="bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2">
@@ -276,7 +276,7 @@ export default function Home() {
                 <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-l-4 border-blue-600">
                   <h3 className="text-xl font-bold text-white">Instagram Direct Message Automation</h3>
                   <p className="mt-4 text-white">
-                    Dm automation instagram is streamlined to the most effortless aspect of one\'s daily life as responses to DMs can be sent instantly through custom flows, templates or AI replies.
+                    Dm automation instagram is streamlined to the most effortless aspect of one&apos;s daily life as responses to DMs can be sent instantly through custom flows, templates or AI replies.
                   </p>
                 </div>
                 <div className="relative bg-gray-900 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-transform duration-300 transform hover:-translate-y-2 border-l-4 border-blue-600">
